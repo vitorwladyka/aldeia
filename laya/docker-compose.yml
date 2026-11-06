@@ -1,0 +1,13 @@
+services:
+  laya-decider:
+    build: .
+    container_name: laya_cpu_server
+    ports:
+      - "8001:8000"           # 8001 no host → 8000 no container
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    restart: unless-stopped
+
+volumes:
+  hf_cache:
+  
