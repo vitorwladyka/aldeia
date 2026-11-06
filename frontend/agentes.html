@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Agentes — Aldeia de Agentes</title>
+  <link rel="stylesheet" href="css/estilo.css?v=14">
+</head>
+<body>
+  <header>
+    <h1>Aldeia de Agentes — Agentes</h1>
+    <nav>
+      <a href="index.html">Início</a>
+      <a href="jogo.html">Jogo</a>
+      <a href="agentes.html">Agentes</a>
+      <a href="config.html">Configuração</a>
+      <a href="analise.html">Análise</a>
+      <a href="historia.html">História</a>
+      <a href="ranking.html">Ranking</a>
+    </nav>
+  </header>
+  <main>
+    <h2>Editor de prompts</h2>
+    <p>Selecione uma partida e um agente para editar o prompt individual.
+       A edição vale a partir do turno seguinte.</p>
+
+    <label>ID da partida: <input type="number" id="f-pid" value="1"></label>
+    <button id="btn-carregar">Carregar agentes</button>
+
+    <div id="agentes-lista"></div>
+
+    <div id="editor" hidden>
+      <h3>Prompt do agente <span id="e-agente"></span></h3>
+      <textarea id="e-texto" rows="15" cols="80"></textarea>
+      <br>
+      <button id="btn-salvar">Salvar (vale a partir do próximo turno)</button>
+
+      <h4>Histórico de versões</h4>
+      <ul id="e-historico"></ul>
+    </div>
+  </main>
+  <script src="js/api.js?v=14"></script>
+  <script src="js/agentes.js?v=14"></script>
+</body>
+</html>

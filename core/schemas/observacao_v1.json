@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aldeia.local/schemas/observacao_v1.json",
+  "title": "Observacao do agente, versao 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "versao",
+    "partida",
+    "eu",
+    "agentes",
+    "estoque",
+    "historico",
+    "mensagens",
+    "acoes_viaveis"
+  ],
+  "properties": {
+    "versao": {"const": 1},
+    "partida": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["turno", "turnos_total", "turnos_restantes", "estacao", "inicio_inverno", "clima"],
+      "properties": {
+        "turno": {"type": "integer", "minimum": 1},
+        "turnos_total": {"type": "integer", "minimum": 1},
+        "turnos_restantes": {"type": "integer", "minimum": 0},
+        "estacao": {"enum": ["normal", "inverno"]},
+        "inicio_inverno": {"type": "integer", "minimum": 1},
+        "clima": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tempestade", "fartura"],
+          "properties": {
+            "tempestade": {"type": "boolean"},
+            "fartura": {"type": "boolean"}
+          }
+        }
+      }
+    },
+    "eu": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agente", "nome", "vida"],
+      "properties": {
+        "agente": {"type": "integer", "minimum": 0},
+        "nome": {"type": "string", "minLength": 1},
+        "vida": {"type": "integer", "minimum": 1, "maximum": 3}
+      }
+    },
+    "agentes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/agente"}
+    },
+    "estoque": {"$ref": "#/$defs/estoque"},
+    "historico": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {"$ref": "#/$defs/turno_historico"}
+    },
+    "mensagens": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/mensagem"}
+    },
+    "acoes_viaveis": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/acao_viavel"}
+    }
+  },
+  "$defs": {
+    "acao_id": {
+      "enum": [
+        "cacar", "pescar", "coletar_trigo", "coletar_erva", "coletar_madeira",
+        "assar_carne", "assar_peixe", "fazer_pao", "preparar_remedio",
+        "curar", "forragear", "passar"
+      ]
+    },
+    "agente": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agente", "nome", "vida", "status"],
+      "properties": {
+        "agente": {"type": "integer", "minimum": 0},
+        "nome": {"type": "string", "minLength": 1},
+        "vida": {"type": "integer", "minimum": 0, "maximum": 3},
+        "status": {"enum": ["vivo", "morto"]}
+      }
+    },
+    "estoque": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alimento_solto", "itens"],
+      "properties": {
+        "alimento_solto": {"type": "integer", "minimum": 0},
+        "itens": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["trigo", "peixe", "carne", "pao", "peixe_assado", "carne_assada", "madeira", "erva", "remedio"],
+          "properties": {
+            "trigo": {"type": "integer", "minimum": 0},
+            "peixe": {"type": "integer", "minimum": 0},
+            "carne": {"type": "integer", "minimum": 0},
+            "pao": {"type": "integer", "minimum": 0},
+            "peixe_assado": {"type": "integer", "minimum": 0},
+            "carne_assada": {"type": "integer", "minimum": 0},
+            "madeira": {"type": "integer", "minimum": 0},
+            "erva": {"type": "integer", "minimum": 0},
+            "remedio": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    },
+    "movimento": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tipo", "item", "delta"],
+      "properties": {
+        "tipo": {"enum": ["coleta", "preparo", "basal", "pagamento", "praga", "cura", "forragem"]},
+        "item": {"enum": ["trigo", "peixe", "carne", "pao", "peixe_assado", "carne_assada", "madeira", "erva", "remedio", "alimento_solto"]},
+        "delta": {"type": "integer"}
+      }
+    },
+    "turno_historico": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["turno", "acao", "alvo", "resultado", "extrato", "eventos"],
+      "properties": {
+        "turno": {"type": "integer", "minimum": 1},
+        "acao": {"$ref": "#/$defs/acao_id"},
+        "alvo": {"type": ["integer", "null"], "minimum": 0},
+        "resultado": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["unidades_finais", "saturada", "sucesso", "acidente", "invalidada"],
+          "properties": {
+            "unidades_finais": {"type": ["integer", "null"], "minimum": 0},
+            "saturada": {"type": ["boolean", "null"]},
+            "sucesso": {"type": ["boolean", "null"]},
+            "acidente": {"type": "boolean"},
+            "invalidada": {"type": "boolean"}
+          }
+        },
+        "extrato": {"type": "array", "items": {"$ref": "#/$defs/movimento"}},
+        "eventos": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tempestade", "fartura", "doenca", "praga"],
+          "properties": {
+            "tempestade": {"type": "boolean"},
+            "fartura": {"type": "boolean"},
+            "doenca": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+            "praga": {
+              "anyOf": [
+                {"type": "null"},
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["recurso", "perdido"],
+                  "properties": {
+                    "recurso": {"enum": ["trigo", "erva", "peixe", "carne"]},
+                    "perdido": {"type": "integer", "minimum": 0}
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "mensagem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["turno", "rodada", "agente", "texto", "intencao_declarada"],
+      "properties": {
+        "turno": {"type": "integer", "minimum": 1},
+        "rodada": {"type": "integer", "minimum": 1},
+        "agente": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
+        "texto": {"type": "string"},
+        "intencao_declarada": {
+          "anyOf": [{"$ref": "#/$defs/acao_id"}, {"type": "null"}]
+        }
+      }
+    },
+    "acao_viavel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["acao", "custo", "alvos"],
+      "properties": {
+        "acao": {"$ref": "#/$defs/acao_id"},
+        "custo": {"type": "integer", "minimum": 0},
+        "alvos": {"type": ["array", "null"], "minItems": 1, "items": {"type": "integer", "minimum": 0}}
+      },
+      "if": {"properties": {"acao": {"const": "curar"}}, "required": ["acao"]},
+      "then": {"properties": {"alvos": {"type": "array"}}},
+      "else": {"properties": {"alvos": {"type": "null"}}}
+    }
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "preset_versao": "1",
+  "turnos": 20,
+  "vida_max": 3,
+  "basal": {
+    "normal": 1,
+    "inverno": 3
+  },
+  "inverno_ppm": 200000,
+  "valores_alimentares": {
+    "peixe": 4,
+    "carne": 6,
+    "pao": 18,
+    "peixe_assado": 22,
+    "carne_assada": 26
+  },
+  "valores_pontuacao_nao_alimentares": {
+    "trigo": 2,
+    "madeira": 1,
+    "erva": 2,
+    "remedio": 5
+  },
+  "eventos_ppm": {
+    "tempestade": 50000,
+    "fartura": 100000,
+    "doenca": 150000,
+    "praga": 80000
+  },
+  "fartura_coleta_ppm": 500000,
+  "praga_ppm": 300000,
+  "forragem_ppm": 600000,
+  "saturacao_limite": 2,
+  "estoque_inicial_ppm_por_agente": {
+    "trigo": 2000000,
+    "peixe": 1500000,
+    "carne": 1200000,
+    "madeira": 1500000,
+    "erva": 600000,
+    "remedio": 400000
+  },
+  "acoes": {
+    "cacar": {
+      "categoria": "coletar",
+      "custo": 12,
+      "acidente_ppm": 30000,
+      "local": "carne",
+      "mcp": ["coletar", "carne"]
+    },
+    "pescar": {
+      "categoria": "coletar",
+      "custo": 8,
+      "acidente_ppm": 5000,
+      "local": "peixe",
+      "mcp": ["coletar", "peixe"]
+    },
+    "coletar_trigo": {
+      "categoria": "coletar",
+      "custo": 5,
+      "acidente_ppm": 5000,
+      "local": "trigo",
+      "mcp": ["coletar", "trigo"]
+    },
+    "coletar_erva": {
+      "categoria": "coletar",
+      "custo": 4,
+      "acidente_ppm": 5000,
+      "local": "erva",
+      "mcp": ["coletar", "erva"]
+    },
+    "coletar_madeira": {
+      "categoria": "coletar",
+      "custo": 3,
+      "acidente_ppm": 5000,
+      "local": "madeira",
+      "mcp": ["coletar", "madeira"]
+    },
+    "assar_carne": {
+      "categoria": "transformar",
+      "custo": 0,
+      "acidente_ppm": 10000,
+      "insumos": {"carne": 2, "madeira": 1},
+      "mcp": ["transformar", "carne_assada"]
+    },
+    "assar_peixe": {
+      "categoria": "transformar",
+      "custo": 0,
+      "acidente_ppm": 10000,
+      "insumos": {"peixe": 2, "madeira": 1},
+      "mcp": ["transformar", "peixe_assado"]
+    },
+    "fazer_pao": {
+      "categoria": "transformar",
+      "custo": 0,
+      "acidente_ppm": 10000,
+      "insumos": {"trigo": 3, "madeira": 1},
+      "mcp": ["transformar", "pao"]
+    },
+    "preparar_remedio": {
+      "categoria": "transformar",
+      "custo": 0,
+      "acidente_ppm": 10000,
+      "insumos": {"erva": 2, "madeira": 1},
+      "mcp": ["transformar", "remedio"]
+    },
+    "curar": {
+      "categoria": "curar",
+      "custo": 0,
+      "acidente_ppm": 0
+    },
+    "forragear": {
+      "categoria": "forragear",
+      "custo": 0,
+      "acidente_ppm": 0
+    },
+    "passar": {
+      "categoria": "passar",
+      "custo": 1,
+      "acidente_ppm": 0
+    }
+  }
+}

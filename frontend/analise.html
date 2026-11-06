@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Análise — Aldeia de Agentes</title>
+  <link rel="stylesheet" href="css/estilo.css?v=14">
+</head>
+<body>
+  <header>
+    <h1>Aldeia de Agentes — Análise</h1>
+    <nav>
+      <a href="index.html">Início</a>
+      <a href="jogo.html">Jogo</a>
+      <a href="agentes.html">Agentes</a>
+      <a href="config.html">Configuração</a>
+      <a href="analise.html">Análise</a>
+      <a href="historia.html">História</a>
+      <a href="ranking.html">Ranking</a>
+    </nav>
+  </header>
+  <main>
+    <h2>Análise de partida</h2>
+    <label>ID da partida: <input type="number" id="f-pid" value="1"></label>
+    <button id="btn-carregar">Carregar</button>
+
+    <div id="analise" hidden>
+      <h3>Estoque por turno
+        <button onclick="exportarCsv('estoque')">Exportar CSV</button>
+      </h3>
+      <div id="estoque"></div>
+
+      <h3>Ganhos e perdas
+        <button onclick="exportarCsv('ganhos-perdas')">Exportar CSV</button>
+      </h3>
+      <div id="ganhos-perdas"></div>
+
+      <h3>Linha do tempo de vidas
+        <button onclick="exportarCsv('vidas')">Exportar CSV</button>
+      </h3>
+      <div id="vidas"></div>
+
+      <h3>Eventos (doenças, pragas, inverno)
+        <button onclick="exportarCsv('eventos')">Exportar CSV</button>
+      </h3>
+      <div id="eventos"></div>
+
+      <h3>Conversas por agente
+        <button onclick="exportarCsv('conversas')">Exportar CSV</button>
+      </h3>
+      <div id="conversas"></div>
+
+      <h3>Divergência intenção × ação
+        <button onclick="exportarCsv('decisoes')">Exportar CSV</button>
+      </h3>
+      <div id="decisoes"></div>
+
+      <h3>Comparar duas partidas (mesma seed)</h3>
+      <label>Partida A: <input type="number" id="f-a" value="1"></label>
+      <label>Partida B: <input type="number" id="f-b" value="2"></label>
+      <button id="btn-comparar">Comparar</button>
+      <div id="comparacao"></div>
+    </div>
+  </main>
+  <script src="js/api.js?v=14"></script>
+  <script src="js/analise.js?v=14"></script>
+</body>
+</html>

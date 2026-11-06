@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Ranking — Aldeia de Agentes</title>
+  <link rel="stylesheet" href="css/estilo.css?v=14">
+  <style>
+    /* Estilos específicos do ranking */
+    .ranking-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .ranking-table th {
+      background: var(--surface-2);
+      color: var(--text-secondary);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 10px 8px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    .ranking-table td {
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    .ranking-table tr:hover td {
+      background: var(--surface-2);
+    }
+    .ranking-table tr.pos-1 td {
+      background: var(--warning-subtle);
+    }
+    .ranking-table tr.pos-1 td:first-child::before {
+      content: '🥇 ';
+    }
+    .ranking-table tr.pos-2 td:first-child::before {
+      content: '🥈 ';
+    }
+    .ranking-table tr.pos-3 td:first-child::before {
+      content: '🥉 ';
+    }
+
+    .posicao {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      color: var(--text-muted);
+      width: 40px;
+    }
+    .pontuacao-cell {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      color: var(--text);
+      font-size: 14px;
+    }
+    .pontuacao-cell.alta { color: var(--success); }
+    .pontuacao-cell.media { color: var(--warning); }
+    .pontuacao-cell.baixa { color: var(--danger); }
+
+    .badge-status {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-status.encerrada { background: var(--success-subtle); color: var(--success); }
+    .badge-status.andamento { background: var(--accent-subtle); color: var(--accent); }
+    .badge-status.criada { background: var(--surface-3); color: var(--text-muted); }
+
+    .classificacao-badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--surface-3);
+      color: var(--text-secondary);
+    }
+    .classificacao-badge.prospera { background: var(--success-subtle); color: var(--success); }
+    .classificacao-badge.estavel { background: var(--info-subtle); color: var(--info); }
+    .classificacao-badge.sobrevivente { background: var(--warning-subtle); color: var(--warning); }
+    .classificacao-badge.risco { background: var(--danger-subtle); color: var(--danger); }
+    .classificacao-badge.caida { background: var(--surface-3); color: var(--text-muted); }
+
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px;
+    }
+    .stat-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    .stat-value {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .stat-value.accent { color: var(--accent); }
+    .stat-value.success { color: var(--success); }
+    .stat-value.warning { color: var(--warning); }
+
+    .decisor-tag {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      background: var(--surface-3);
+      color: var(--text-secondary);
+    }
+    .decisor-tag.bot { background: var(--surface-3); color: var(--text-muted); }
+    .decisor-tag.llm { background: var(--llm-subtle); color: var(--llm); }
+    .decisor-tag.lbm { background: var(--lbm-subtle); color: var(--lbm); }
+
+    .vivos-cell {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+    }
+    .vivos-cell.completo { color: var(--success); }
+    .vivos-cell.parcial { color: var(--warning); }
+    .vivos-cell.nenhum { color: var(--danger); }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+    }
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+      opacity: 0.5;
+    }
+
+    @media (max-width: 800px) {
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+      .ranking-table { font-size: 12px; }
+      .ranking-table th, .ranking-table td { padding: 6px 4px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Aldeia de Agentes — Ranking</h1>
+    <nav>
+      <a href="index.html">Início</a>
+      <a href="jogo.html">Jogo</a>
+      <a href="agentes.html">Agentes</a>
+      <a href="config.html">Configuração</a>
+      <a href="analise.html">Análise</a>
+      <a href="historia.html">História</a>
+      <a href="ranking.html" class="active">Ranking</a>
+    </nav>
+  </header>
+  <main>
+    <h2>🏆 Ranking de Partidas</h2>
+    <p class="text-sm text-secondary" style="margin: 8px 0 20px 0">
+      Compara partidas por pontuação única: <code>(vivos × 1000) + (vidas × 100) + valor_estoque</code>
+    </p>
+
+    <!-- Estatísticas agregadas -->
+    <div class="stats-row" id="stats"></div>
+
+    <!-- Tabela de ranking -->
+    <div class="card">
+      <div id="ranking-container">
+        <div class="empty-state">
+          <div class="empty-state-icon">📊</div>
+          <p>Carregando ranking...</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/api.js?v=14"></script>
+  <script src="js/ranking.js?v=14"></script>
+</body>
+</html>

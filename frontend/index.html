@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Aldeia de Agentes</title>
+  <link rel="stylesheet" href="css/estilo.css?v=14">
+</head>
+<body>
+  <header>
+    <h1>Aldeia de Agentes</h1>
+    <nav>
+      <a href="index.html">Início</a>
+      <a href="jogo.html">Jogo</a>
+      <a href="agentes.html">Agentes</a>
+      <a href="config.html">Configuração</a>
+      <a href="analise.html">Análise</a>
+      <a href="historia.html">História</a>
+      <a href="ranking.html">Ranking</a>
+    </nav>
+  </header>
+  <main>
+    <h2>Bem-vindo</h2>
+    <p>Aldeia de Agentes é um jogo cooperativo em turnos onde agentes LLM/LBM
+       vivem numa aldeia: coletam, preparam, curam e conversam para sobreviver.</p>
+
+    <h3>Partidas recentes</h3>
+    <div id="partidas"></div>
+
+    <h3>Começar</h3>
+    <button onclick="window.location.href='jogo.html'">Nova partida</button>
+    <button onclick="window.location.href='config.html'">Configurar LLM/LBM</button>
+    <button id="btn-limpar" style="background:#c0392b">🗑️ Limpar todo o histórico</button>
+  </main>
+  <script src="js/api.js?v=14"></script>
+  <script src="js/index.js?v=14"></script>
+</body>
+</html>

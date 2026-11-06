@@ -1,0 +1,24 @@
+{
+  "mundo_versao": "1",
+  "coleta": {
+    "padrao": [
+      0,
+      1,
+      1,
+      1,
+      2,
+      2,
+      3
+    ],
+    "madeira": [
+      1,
+      1,
+      2,
+      2,
+      3
+    ]
+  },
+  "transformacao": {
+    "sucesso_ppm": 850000
+  }
+}

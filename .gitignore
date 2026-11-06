@@ -1,0 +1,20 @@
+# Segredos e configuração local
+.env
+config_llm.json
+
+# Dados de partidas (gerados localmente)
+data/
+
+# App do Laya (container com repositório git próprio)
+appLaya/
+
+# Ambiente Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Editores / SO
+.DS_Store
+.idea/
+.vscode/
