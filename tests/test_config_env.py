@@ -1,0 +1,30 @@
+"""Testes do carregamento de config (opção B: segredo no .env, resto no JSON)."""
+from __future__ import annotations
+
+import config_env
+
+
+def test_api_key_vem_do_ambiente(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_teste_123")
+    assert config_env.api_key() == "gsk_teste_123"
+
+
+def test_api_key_ausente(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    assert config_env.api_key() is None
+
+
+def test_config_llm_junta_json_e_env(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_xyz")
+    cfg = config_env.config_llm()
+    # a api_key vem do env; os demais campos vêm do JSON (ou default)
+    assert cfg["api_key"] == "gsk_xyz"
+    assert cfg["provedor"] in ("groq", "openai", "bedrock")
+    assert "temperature" in cfg
+
+
+def test_config_laya_tem_campos(monkeypatch):
+    c = config_env.config_laya()
+    assert "url" in c and "timeout_s" in c and "threshold" in c
+    assert isinstance(c["timeout_s"], float)
+    assert isinstance(c["threshold"], float)
