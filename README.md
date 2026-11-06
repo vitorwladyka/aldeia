@@ -49,10 +49,24 @@ aldeia/
 ## Como rodar
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
+
+# Configuração: copie o exemplo e preencha a chave do provedor LLM.
+cp .env.example .env
+# edite .env e defina GROQ_API_KEY=... (pegue em https://console.groq.com/keys)
+
 python server.py
-# Abra http://localhost:8000/
+# Abra http://localhost:8000/  (servidor escuta só em 127.0.0.1)
 ```
+
+### Configuração
+
+- **Segredos** ficam no `.env` (não versionado). Só a `GROQ_API_KEY` é sensível.
+- **Config não-sensível** (modelo, provedor, URL do Laya, threshold) fica em
+  `config_llm.json` e `config_lbm.json`, editáveis pela página de Configuração.
+- O provedor Bedrock usa as credenciais AWS do ambiente, não a `GROQ_API_KEY`.
 
 ## Decisores
 
