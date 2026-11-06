@@ -21,7 +21,7 @@ import time
 from datetime import datetime, timezone
 
 from core import motor, observacao, placar as placar_mod
-from core.acoes import acoes_viaveis
+from core.acoes import acoes_viaveis, reservar_acao
 from core.estado import Agente, Estado
 from core.hashing import cenario_hash, mcp_config_hash, preset_hash
 from core.mcp_cliente import MundoMemoria
@@ -235,7 +235,7 @@ def _decidir_para_agente(p: dict, obs: dict, prompt_agente: str, agente_idx: int
 
     Decisores:
     - "bot": determinístico (round-robin).
-    - "llm": se `lbm_habilitado` (default True), usa o híbrido Laya→Claude com
+    - "llm": se `lbm_habilitado` (default True), usa o híbrido Laya→LLM com
       checagem de confiança e colisão; senão, chama o LLM diretamente.
 
     `locais_ocupados` (opcional) mapeia local → nº de agentes já decididos na
@@ -327,6 +327,9 @@ def _rodar_conselho(p: dict, estado, preset, mensagens: list,
     # Locais já ocupados por decisões FINAIS (resolvidas pela LBM na fase 0);
     # contam na colisão do conselho.
     locais_resolvidos: dict[str, int] = {}
+    # Insumos/remédio já reservados por decisões FINAIS (fase 0). Evita que dois
+    # agentes escolham a mesma ação quando só há insumo para um.
+    reservas_resolvidas: dict[str, int] = {}
     # Agentes que precisam passar pelo conselho (ordem preservada).
     a_escalar: list[int] = []
 
@@ -339,7 +342,7 @@ def _rodar_conselho(p: dict, estado, preset, mensagens: list,
             a = estado.agente(idx)
             if not a.vivo:
                 continue
-            viaveis = acoes_viaveis(estado, a.indice, preset)
+            viaveis = acoes_viaveis(estado, a.indice, preset, reservas_resolvidas)
             if not viaveis:
                 # Sem ações viáveis: passa, decisão final, fora do conselho.
                 acoes_finais[idx] = motor.AcaoDecidida(agente=idx, acao="passar")
@@ -354,17 +357,25 @@ def _rodar_conselho(p: dict, estado, preset, mensagens: list,
                                    mensagens)
             # Injeta tools do agente para a Laya restringir as opções.
             _injetar_cfg_obs(p, obs, a.indice)
+            _t0 = time.time()
             d_lbm = _lbm.decidir(obs, "", a.indice)
+            lat_lbm = int((time.time() - _t0) * 1000)  # latência real da chamada à Laya
             local = _hibrido_local(d_lbm.acao, preset)
             colide = (locais_resolvidos.get(local, 0) + 1) > sat
             threshold = _hibrido_threshold()
+            print(f"[FASE0] agente={idx} laya={d_lbm.acao} conf={d_lbm.confianca:.2f} "
+                  f"threshold={threshold} colide={colide} → "
+                  f"{'RESOLVE (fora do conselho)' if (d_lbm.confianca >= threshold and not colide) else 'ESCALA para o conselho/LLM'}",
+                  flush=True)
             if d_lbm.confianca >= threshold and not colide:
-                # LBM resolve: decisão final, ocupa o local, fora do conselho.
+                # LBM resolve: decisão final, ocupa o local, reserva insumos,
+                # fora do conselho.
                 acoes_finais[idx] = motor.AcaoDecidida(
                     agente=idx, acao=d_lbm.acao, alvo=d_lbm.alvo)
                 decisoes_finais[idx] = _decisao_para_historico(
-                    d_lbm, 0, prox_turno, idx)
+                    d_lbm, lat_lbm, prox_turno, idx)
                 locais_resolvidos[local] = locais_resolvidos.get(local, 0) + 1
+                reservar_acao(reservas_resolvidas, d_lbm.acao, d_lbm.alvo, preset)
             else:
                 a_escalar.append(idx)
 
@@ -398,6 +409,9 @@ def _rodar_conselho(p: dict, estado, preset, mensagens: list,
         # Ocupação de locais nesta rodada (para colisão no híbrido). Parte dos
         # locais já ocupados pelas decisões finais da LBM (fase 0).
         locais_ocupados: dict[str, int] = dict(locais_resolvidos)
+        # Reservas de insumos nesta rodada: parte das reservas da fase 0 e
+        # acumula conforme os agentes decidem (evita 2 usando o mesmo insumo).
+        reservas_rodada: dict[str, int] = dict(reservas_resolvidas)
 
         # Verifica consenso antecipado: se rodada > 1 e todas as intenções
         # desta rodada (até agora) forem iguais às da rodada anterior, para.
@@ -407,7 +421,7 @@ def _rodar_conselho(p: dict, estado, preset, mensagens: list,
             a = estado.agente(idx)
             if not a.vivo:
                 continue
-            viaveis = acoes_viaveis(estado, a.indice, preset)
+            viaveis = acoes_viaveis(estado, a.indice, preset, reservas_rodada)
             if not viaveis:
                 # Sempre registra passar como oficial (consenso ou última)
                 acoes_decididas.append(
@@ -450,6 +464,13 @@ def _rodar_conselho(p: dict, estado, preset, mensagens: list,
             # os próximos agentes da rodada vejam a colisão acumulada.
             local_agente = _hibrido_local(d.acao, preset)
             locais_ocupados[local_agente] = locais_ocupados.get(local_agente, 0) + 1
+            # Reserva insumos, custo em alimento e ponto de cura desta ação, para
+            # que os próximos agentes não disputem o mesmo recurso escasso.
+            reservar_acao(reservas_rodada, d.acao, d.alvo, preset)
+            print(f"[CONSELHO] R{rodada} agente={a.indice} → {d.acao}"
+                  + (f" alvo={d.alvo}" if d.alvo is not None else "")
+                  + f" (origem={d.origem}, conf={d.confianca:.2f}) | {d.raciocinio[:80]}",
+                  flush=True)
 
             # Sempre registra decisão oficial (cada rodada sobrescreve; a última
             # ou a rodada de consenso fica). Sem isso, decisões eram perdidas
@@ -602,6 +623,9 @@ def executar_turno(partida_id: int) -> dict:
     if prox_turno > p["n_turnos"]:
         raise ValueError(f"partida {partida_id} já no último turno")
 
+    print(f"\n{'='*60}\n[TURNO {prox_turno}] partida {partida_id} "
+          f"(decisor={p['decisor']}, lbm={p.get('lbm_habilitado')})", flush=True)
+
     preset = Preset.do_arquivo()
     estado = _desserializar_estado(p["_estado"])
     estado.turno = prox_turno
@@ -611,6 +635,10 @@ def executar_turno(partida_id: int) -> dict:
 
     # 1. Iniciar turno (basal, eventos, ordem, doença, praga)
     motor.iniciar_turno(estado, p["seed"], preset, p["n_turnos"])
+    print(f"[TURNO {prox_turno}] basal/eventos aplicados | estacao={estado.estacao} "
+          f"| vivos={estado.vivos} | ordem={estado.ordem_turno} "
+          f"| estoque={ {k:v for k,v in estado.estoque.items() if v>0} } "
+          f"| solto={estado.alimento_solto}", flush=True)
 
     if not estado.vivos:
         # Todos morreram no basal/doença → registra histórico vazio e encerra
@@ -678,6 +706,8 @@ def executar_turno(partida_id: int) -> dict:
         "eventos_vida": [_formatar_evento_vida(e) for e in estado.eventos_vida],
         "decisoes": decisoes_hist,
         "acoes_executadas": resultado.acoes_executadas,
+        # Retorno cru do MCP (coletar/transformar) para auditar sucesso/falha.
+        "chamadas_mcp": resultado.chamadas_mcp,
         "placar": placar_parcial,
     }
     p["historico"].append(turno_hist)

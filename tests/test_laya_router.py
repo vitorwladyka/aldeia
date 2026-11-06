@@ -74,19 +74,22 @@ def test_passar_removido_quando_ha_alternativa(monkeypatch, obs):
     assert "forragear" in capt["opcoes"]
 
 
-def test_fallback_heuristica_quando_endpoint_fora(monkeypatch, obs):
+def test_endpoint_fora_confianca_zero_para_escalar(monkeypatch, obs):
+    """Laya fora → confiança 0.0 (sem heurística), para o híbrido escalar ao LLM."""
     monkeypatch.setattr(lr, "_chamar_laya", lambda s, q: None)
     d = lr.decidir(obs, "", 0)
-    # cai na heurística; ação dentro das opções do agente
-    assert d.acao in ("forragear", "coletar_erva", "curar")
+    assert d.confianca == 0.0
     assert d.origem == "lbm"
+    assert "escalar" in d.raciocinio.lower()
 
 
-def test_acao_fora_das_opcoes_cai_na_heuristica(monkeypatch, obs):
+def test_acao_fora_das_opcoes_confianca_zero(monkeypatch, obs):
+    """Laya devolve ação inválida → confiança 0.0 (escala), não heurística."""
     monkeypatch.setattr(lr, "_chamar_laya",
                         lambda s, q: {"selection": "cacar", "confidence": 0.9})
     d = lr.decidir(obs, "", 0)
-    assert d.acao != "cacar"  # cacar não está nas tools viáveis do agente
+    assert d.confianca == 0.0
+    assert d.acao != "cacar"
 
 
 def test_curar_resolve_alvo_menor_indice(monkeypatch, obs):

@@ -231,7 +231,7 @@ function desenharMcpHub(servicosAtivos) {
 }
 
 // ====================================================================
-// DECISION FLOW — atualiza o pipeline Laya → Claude com confidence
+// DECISION FLOW — atualiza o pipeline Laya → LLM com confidence
 // ====================================================================
 function atualizarFlow(decisoes, decisorTipo) {
   const confFill = document.getElementById("flow-conf-fill");
@@ -307,7 +307,7 @@ function atualizarFlow(decisoes, decisorTipo) {
 
   // Lista de chips
   const summary = `<div class="text-xs text-muted" style="margin-bottom:6px">
-    Turno ${ultimoTurno} • <span style="color:var(--lbm)">${lbmCount} Laya</span> • <span style="color:var(--llm)">${llmCount} Claude</span>
+    Turno ${ultimoTurno} • <span style="color:var(--lbm)">${lbmCount} Laya</span> • <span style="color:var(--llm)">${llmCount} LLM</span>
   </div>`;
   decisionsDiv.innerHTML = summary + (chips || '<p class="text-xs text-muted">—</p>');
 }
@@ -490,7 +490,7 @@ async function carregarDetalhesTurno() {
       mcpSummary.textContent = "Aguardando turno…";
     }
 
-    // === Atualiza o fluxo de decisão Laya → Claude ===
+    // === Atualiza o fluxo de decisão Laya → LLM ===
     atualizarFlow(decisoes.decisoes, "lbm");
 
     // === Histórico de turnos (rico: eventos + ações + deltas + mortes) ===

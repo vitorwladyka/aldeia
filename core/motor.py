@@ -322,6 +322,9 @@ async def _executar_uma(
         })
 
         sucesso = mcp_resp.get("sucesso", False) if mcp_resp else False
+        print(f"[MCP] transformar agente={ad.agente} {ad.acao} → "
+              f"produto={a['mcp'][1]} resposta={mcp_resp} sucesso={sucesso}",
+              flush=True)
         if sucesso:
             produto = a["mcp"][1]
             estado.estoque[produto] += 1
@@ -391,6 +394,8 @@ async def _executar_uma(
 
         unidades_mcp = mcp_resp.get("unidades", 0) if mcp_resp else 0
         local = a["local"]
+        print(f"[MCP] coletar agente={ad.agente} {ad.acao} → recurso={a['mcp'][1]} "
+              f"resposta={mcp_resp}", flush=True)
 
         # Saturação: posição do agente entre as coletas efetivamente executadas e
         # pagas daquele mesmo local no turno.

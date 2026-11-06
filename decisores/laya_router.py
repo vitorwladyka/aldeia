@@ -20,8 +20,9 @@ A `selection` vira a ação; a `confidence` alimenta o threshold do híbrido. Pa
 `curar`, o alvo é resolvido deterministicamente (menor índice ferido).
 
 URL e timeout vêm de `config_lbm.json` (`url`, `timeout_s`). Se o endpoint não
-responder ou a resposta vier inválida, caímos na heurística determinística
-(`decisores/lbm.py`), que simula um model one.
+responder ou a resposta vier inválida, a decisão é marcada com confiança 0.0 —
+fazendo o híbrido ESCALAR para o LLM (Laya fora = escala, por desenho). Não há
+heurística local no caminho.
 """
 from __future__ import annotations
 
@@ -31,7 +32,6 @@ from pathlib import Path
 import httpx
 
 from .bot import Decisao
-from . import lbm as _heuristica
 from agentes import catalogo
 from agentes.construtor import tools_efetivas
 
@@ -68,24 +68,30 @@ def _chamar_laya(state: dict, questions: dict) -> dict | None:
     # Em cooldown após falha recente? Pula o HTTP (usa fallback), mas volta a
     # tentar quando o cooldown expirar.
     if _time.monotonic() < _falha_ate:
+        print("[LAYA] em cooldown — pulando HTTP (usa escalonamento)", flush=True)
         return None
     url, timeout = _config_laya()
     payload = {"state": state, "questions": questions}
+    opcoes = list(questions.get("acao", {}).get("criteria", {}).keys())
+    print(f"[LAYA] POST {url} | opcoes={opcoes}", flush=True)
     try:
         with httpx.Client(timeout=timeout) as client:
             r = client.post(url, json=payload,
                             headers={"Content-Type": "application/json"})
         r.raise_for_status()
         dados = r.json()
-    except Exception:
+    except Exception as e:
         # Falha → entra em cooldown curto; volta a tentar depois.
         _falha_ate = _time.monotonic() + COOLDOWN_S
+        print(f"[LAYA] ERRO HTTP: {type(e).__name__}: {str(e)[:120]} "
+              f"→ cooldown {COOLDOWN_S}s, escala para LLM", flush=True)
         return None
     # Sucesso → zera qualquer cooldown pendente.
     _falha_ate = 0.0
 
     decisoes = dados.get("answers", dados) if isinstance(dados, dict) else {}
     dec = decisoes.get("acao") if isinstance(decisoes, dict) else None
+    print(f"[LAYA] resposta crua: {json.dumps(dec, ensure_ascii=False)[:300]}", flush=True)
     if dec is None:
         return None
 
@@ -119,6 +125,8 @@ def _chamar_laya(state: dict, questions: dict) -> dict | None:
             pass
     confidence = max(candidatos) if candidatos else 0.0
 
+    print(f"[LAYA] selecao={selection!r} confianca={confidence:.4f} "
+          f"(candidatos={[round(c,3) for c in candidatos]})", flush=True)
     return {"selection": selection, "confidence": confidence}
 
 
@@ -203,35 +211,33 @@ def decidir(observacao: dict, prompt_agente: str, agente_idx: int) -> Decisao:
     questions = _montar_questions(opcoes)
     resp = _chamar_laya(state, questions)
     if resp is None:
-        # Endpoint fora do ar ou resposta inválida → heurística (model one local),
-        # respeitando as opções restritas pelas tools do agente.
-        return _decidir_heuristica(observacao, prompt_agente, agente_idx, opcoes)
+        # Laya indisponível (endpoint fora ou resposta inválida) → decisão
+        # NÃO-confiável. Devolve confiança 0.0 para o híbrido ESCALAR ao LLM.
+        # Não usamos heurística local: Laya fora = escala, por desenho.
+        return _decisao_incerta(opcoes, viaveis, "laya indisponível")
 
     acao = resp["selection"]
     confianca = resp["confidence"]
     if acao not in opcoes:
-        # Laya devolveu algo fora das opções — cai na heurística.
-        return _decidir_heuristica(observacao, prompt_agente, agente_idx, opcoes)
+        # Laya devolveu algo fora das opções → trata como incerto (escala).
+        return _decisao_incerta(opcoes, viaveis,
+                                f"laya devolveu ação inválida: {acao!r}")
 
     alvo = _resolver_alvo(acao, viaveis)
+    print(f"[LBM] agente={agente_idx} → {acao}"
+          + (f" alvo={alvo}" if alvo is not None else "")
+          + f" conf={confianca:.2f}", flush=True)
     return Decisao(acao=acao, alvo=alvo, confianca=confianca, origem="lbm",
                    raciocinio=f"laya: {acao} (conf={confianca:.2f})")
 
 
-def _decidir_heuristica(observacao: dict, prompt_agente: str, agente_idx: int,
-                        opcoes: list[str]) -> Decisao:
-    """Fallback: heurística determinística, mas restrita às `opcoes` do agente.
+def _decisao_incerta(opcoes: list[str], viaveis: list[dict], motivo: str) -> Decisao:
+    """Decisão de confiança 0.0 → força o híbrido a escalar para o LLM.
 
-    Reusa `lbm.decidir`; se a ação escolhida não estiver nas opções permitidas,
-    força a primeira opção permitida (com confiança reduzida).
+    A ação é só um placeholder (primeira opção); com confiança 0.0 ela nunca é
+    usada diretamente — o híbrido sempre escala.
     """
-    d = _heuristica.decidir(observacao, prompt_agente, agente_idx)
-    if d.acao in opcoes:
-        return d
-    # Ação fora das tools do agente → escolhe a primeira opção permitida.
-    acao = opcoes[0]
-    viaveis = observacao.get("acoes_viaveis", [])
+    acao = opcoes[0] if opcoes else "passar"
     alvo = _resolver_alvo(acao, viaveis)
-    return Decisao(acao=acao, alvo=alvo, confianca=min(d.confianca, 0.5),
-                   origem="lbm",
-                   raciocinio=f"heurística restrita às tools → {acao}")
+    return Decisao(acao=acao, alvo=alvo, confianca=0.0, origem="lbm",
+                   raciocinio=f"{motivo} — confiança 0, escalar para LLM")

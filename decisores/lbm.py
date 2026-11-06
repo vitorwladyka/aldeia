@@ -16,7 +16,7 @@ explícita entre agentes. Isso espelha o `_gerar_papel_por_id` do
 `core/observacao.py` (descoberta diag11).
 
 Quando a confiança fica abaixo do threshold (default 0.5), o `hibrido.py`
-escala para o LLM (Claude).
+escala para o LLM.
 
 Para trocar pela Laya real: substituir o corpo de `decidir()` por uma
 chamada HTTP ao endpoint do Laya, mantendo a assinatura.

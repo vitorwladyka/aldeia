@@ -1,4 +1,4 @@
-"""Decisor híbrido: Laya (LBM) → Claude (LLM) por threshold e colisão.
+"""Decisor híbrido: Laya (LBM) → LLM por threshold e colisão.
 
 Fluxo (por agente, quando o LBM está habilitado):
 1. LBM decide rapidamente em memória e devolve (acao, alvo, confiança).

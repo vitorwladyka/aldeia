@@ -9,10 +9,10 @@
       "tipo": "lbm",
       "descricao": "Heurística rápida em memória — simula roteamento de um LBM 1B"
     },
-    "claude": {
-      "nome": "Claude (LLM via z-ai)",
+    "llm": {
+      "nome": "LLM (via Strands)",
       "tipo": "llm",
-      "descricao": "Chamada real ao LLM via z-ai chat — fallback para casos complexos"
+      "descricao": "Chamada real ao LLM via Strands — fallback para casos complexos"
     }
   },
   "state_template": "JOGO DE SOBREVIVÊNCIA. Objetivo: todos vivos até o fim.\nREGRA 1: Cada turno cada agente paga basal (1 alimento normal, 3 no inverno).\nREGRA 2: Sem alimento, perde 1 vida. Vida 0 = morte.\nREGRA 3: Trigo, erva, madeira e remédio NÃO são comida. Precisam ser transformados.\nREGRA 4: Só peixe, carne, pão, peixe_assado e carne_assada são comida.\nREGRA 5: Coletar CUSTA alimento. Se disponível baixo, evite coletar.\nREGRA 6: No máximo 2 agentes por local rendem plenamente.\nREGRA 7: Forragear custa 0 e tem 60% de chance de +1 alimento.\nALERTA: Alimento disponível = {alimento_disponivel}. {alerta_alimento}\nEVITE que todos escolham a mesma ação — dividam as tarefas!",

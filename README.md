@@ -27,8 +27,8 @@ aldeia/
 ├── decisores/                  # Decisores de ação
 │   ├── bot.py                  #   Determinístico (round-robin)
 │   ├── lbm.py                  #   Laya: heurística com confiança
-│   └── llm.py                  #   Claude: z-ai chat (chamada real)
-├── hibrido.py                  # Orquestra Laya → Claude por threshold
+│   └── llm.py                  #   LLM via Strands (chamada real)
+├── hibrido.py                  # Orquestra Laya → LLM por threshold
 ├── partida.py                  # Orquestra turnos: iniciar + decidir + executar
 ├── armazenamento.py            # Persistência JSON em data/
 ├── server.py                   # FastAPI: API + estáticos do frontend
@@ -83,8 +83,8 @@ ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
 | Decisor | Descrição | Latência | Rede |
 |---------|-----------|----------|------|
 | `bot`   | Determinístico (round-robin pelas ações viáveis) | ~0ms | não |
-| `llm`   | Claude direto via `z-ai chat` | ~500ms | sim |
-| `lbm`   | Híbrido: Laya → se conf < threshold → Claude | ~0ms (Laya) ou ~500ms (Claude) | depende |
+| `llm`   | LLM direto via Strands (Groq/OpenAI-compat/Bedrock) | ~500ms | sim |
+| `lbm`   | Híbrido: Laya → se conf < threshold → LLM | ~0ms (Laya) ou ~500ms (LLM) | depende |
 
 O LBM (papel de "Laya") é uma heurística Python que devolve ação + confiança
 calibrada. Para trocar pela Laya real: substituir o corpo de

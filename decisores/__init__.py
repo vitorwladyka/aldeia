@@ -2,7 +2,7 @@
 
 Três implementações:
 - `bot`: determinístico (round-robin pelas ações viáveis).
-- `llm`: chama o LLM real via `z-ai chat` (papel de "Claude").
+- `llm`: chama o LLM real via Strands (Groq/OpenAI-compat/Bedrock).
 - `lbm`: heurística rápida em memória (papel de "Laya") — devolve ação + confiança.
 
 `hibrido.decidir()` orquestra LBM → se confiança < threshold → LLM.

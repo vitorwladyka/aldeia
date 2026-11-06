@@ -187,7 +187,7 @@ def renderizar_texto_compacto(observacao: dict, max_tokens: int = 500) -> str:
 
     # Alerta de feridos — aparece SEMPRE que há agentes com vida baixa
     # (Laya ignora essa info — testes diag10 mostraram conf=1.0 em pescar mesmo
-    #  com alerta explícito "PRIORIZE coletar_erva". Mas Claude usa quando escala.)
+    #  com alerta explícito "PRIORIZE coletar_erva". Mas o LLM usa quando escala.)
     e_est = observacao.get("estoque", {})
     e_itens = e_est.get("itens", {})
     tem_remedio = e_itens.get("remedio", 0) > 0

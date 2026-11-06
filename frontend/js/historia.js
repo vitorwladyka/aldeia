@@ -140,7 +140,7 @@ function gerarPrologo(partida, eventos) {
     </p>
     <p class="narrativa-texto">
       A decisão de cada ação seria tomada por <span class="destaque">${p.decisor}</span>
-      ${p.decisor === 'lbm' ? ' — o híbrido Laya + Claude' : ''}.
+      ${p.decisor === 'lbm' ? ' — o híbrido Laya + LLM' : ''}.
       ${p.rodadas_conselho > 0
         ? `Antes de cada turno, os aldeões se reuniriam por <span class="destaque">${p.rodadas_conselho} rodada(s)</span> de conselho.`
         : `Sem conselho — cada um por si.`
@@ -239,7 +239,7 @@ function gerarCapitulo(turno, dados, partida) {
     }
     paragrafos.push(frase);
 
-    // 3. Decisões interessantes: quem foi escalado para Claude?
+    // 3. Decisões interessantes: quem foi escalado para o LLM?
     const escalados = acoesPorAgente.filter(d => {
       if (!d.resposta_bruta) return false;
       try {
@@ -250,7 +250,7 @@ function gerarCapitulo(turno, dados, partida) {
     if (escalados.length > 0) {
       const nomesEsc = escalados.map(d => nomeAgente(d.indice, partida)).join(", ");
       paragrafos.push(
-        `<span class="destaque-alerta">🧠 Claude assumiu para ${nomesEsc}</span> — ` +
+        `<span class="destaque-alerta">🧠 O LLM assumiu para ${nomesEsc}</span> — ` +
         `Laya não tinha confiança suficiente nessa decisão.`
       );
     }

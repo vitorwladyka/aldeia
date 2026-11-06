@@ -43,7 +43,7 @@
   --info: #3b82f6;
   --info-subtle: rgba(59, 130, 246, 0.12);
 
-  /* LBM = purple, LLM = cyan (para o fluxo Laya→Claude) */
+  /* LBM = purple, LLM = cyan (para o fluxo Laya→LLM) */
   --lbm: #a855f7;
   --lbm-glow: rgba(168, 85, 247, 0.4);
   --lbm-subtle: rgba(168, 85, 247, 0.12);
@@ -474,7 +474,7 @@ tr:hover td { background: var(--surface-2); }
   font-weight: 600;
 }
 
-/* === DECISION FLOW (Laya → Claude) === */
+/* === DECISION FLOW (Laya → LLM) === */
 .flow-section {
   background: var(--surface);
   border: 1px solid var(--border);
