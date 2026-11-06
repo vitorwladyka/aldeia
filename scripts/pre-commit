@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+#
+# Hook de pre-commit: bloqueia o commit se detectar segredos.
+#
+# Instalação (uma vez por clone):
+#   ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
+#   (ou copie: cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit)
+#
+# Checagens:
+#   1. Nenhum arquivo .env (ou .env.*) pode ser adicionado ao commit.
+#   2. Nenhum conteúdo staged pode conter uma chave em texto (gsk_..., sk-...,
+#      AKIA..., etc.).
+#
+# Para pular em caso de falso positivo: git commit --no-verify
+
+set -euo pipefail
+
+falhou=0
+
+# 1. Bloquear arquivos .env sendo adicionados (exceto .env.example)
+arquivos_env=$(git diff --cached --name-only --diff-filter=A | grep -E '(^|/)\.env($|\.)' | grep -v '\.env\.example$' || true)
+if [ -n "$arquivos_env" ]; then
+  echo "✗ pre-commit: arquivo .env não pode ser commitado:"
+  echo "$arquivos_env" | sed 's/^/    /'
+  falhou=1
+fi
+
+# 2. Procurar chaves em texto no conteúdo staged.
+#    Padrões: Groq (gsk_), OpenAI (sk-), AWS (AKIA), Google (AIza), tokens longos.
+padrao='(gsk_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_\-]{30,})'
+# Só os arquivos de texto staged (adicionados/modificados), ignorando binários.
+encontrados=$(git diff --cached --no-color -U0 --diff-filter=ACM | grep -E '^\+' | grep -En "$padrao" || true)
+if [ -n "$encontrados" ]; then
+  echo "✗ pre-commit: possível chave/segredo detectado no conteúdo staged:"
+  echo "$encontrados" | sed 's/^/    /' | cut -c1-120
+  echo "  Se for falso positivo: git commit --no-verify"
+  falhou=1
+fi
+
+if [ "$falhou" -ne 0 ]; then
+  echo ""
+  echo "Commit bloqueado pelo hook de segurança. Corrija os itens acima."
+  exit 1
+fi
+
+exit 0

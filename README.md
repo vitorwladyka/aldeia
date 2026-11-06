@@ -61,6 +61,16 @@ python server.py
 # Abra http://localhost:8000/  (servidor escuta só em 127.0.0.1)
 ```
 
+### Hook de segurança (opcional, recomendado)
+
+Instale o hook de pre-commit que bloqueia commit de `.env` ou de chaves em texto:
+
+```bash
+ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
+```
+
+(Para pular numa situação de falso positivo: `git commit --no-verify`.)
+
 ### Configuração
 
 - **Segredos** ficam no `.env` (não versionado). Só a `GROQ_API_KEY` é sensível.
