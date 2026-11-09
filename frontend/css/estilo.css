@@ -54,6 +54,9 @@
   --bot: #94a3b8;
   --bot-glow: rgba(148, 163, 184, 0.4);
   --bot-subtle: rgba(148, 163, 184, 0.12);
+  /* REGRA = verde (decisor determinístico por regras) */
+  --regra: #22c55e;
+  --regra-subtle: rgba(34, 197, 94, 0.12);
 
   /* Shadows */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -604,6 +607,7 @@ tr:hover td { background: var(--surface-2); }
 .decision-chip.lbm { border-color: var(--lbm); background: var(--lbm-subtle); color: var(--lbm); }
 .decision-chip.llm { border-color: var(--llm); background: var(--llm-subtle); color: var(--llm); }
 .decision-chip.bot { border-color: var(--bot); background: var(--bot-subtle); color: var(--bot); }
+.decision-chip.regra { border-color: var(--regra); background: var(--regra-subtle); color: var(--regra); }
 .decision-chip .chip-action {
   font-weight: 600;
   color: var(--text);
@@ -774,6 +778,7 @@ tr:hover td { background: var(--surface-2); }
 .turno-row .turno-acao.lbm { border-left: 2px solid var(--lbm); }
 .turno-row .turno-acao.llm { border-left: 2px solid var(--llm); }
 .turno-row .turno-acao.bot { border-left: 2px solid var(--bot); }
+.turno-row .turno-acao.regra { border-left: 2px solid var(--regra); }
 .turno-row .turno-acao.morte {
   background: var(--danger-subtle);
   color: var(--danger);
@@ -880,3 +885,37 @@ tr:hover td { background: var(--surface-2); }
 }
 .check-item:hover { background: var(--surface-3); }
 .check-item input { margin-top: 3px; }
+
+/* === Decisões por agente (cartões) === */
+.flow-resumo { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.agente-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.agente-cartao {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.agente-cartao.lbm { border-left-color: var(--lbm); }
+.agente-cartao.llm { border-left-color: var(--llm); }
+.agente-cartao.bot { border-left-color: var(--bot); }
+.agente-cartao.regra { border-left-color: var(--regra); }
+.cartao-topo { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.cartao-nome { font-weight: 600; color: var(--text); font-size: 13px; }
+.cartao-acao { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--text); }
+.cartao-raciocinio {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cartao-nota.aviso { color: var(--warning); font-size: 11px; }
+.cartao-meta { color: var(--text-faint); font-size: 10px; }

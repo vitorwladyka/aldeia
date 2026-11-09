@@ -1,13 +1,40 @@
+# docker-compose.yml
 services:
+  # Mecanismo de Decisão Rápida (Laya)
   laya-decider:
     build: .
     container_name: laya_cpu_server
     ports:
-      - "8001:8000"           # 8001 no host → 8000 no container
+      - "8001:8000"           # Mantido: 8001 no host → 8000 no container
     volumes:
       - hf_cache:/root/.cache/huggingface
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          memory: 2048M       # O Laya em modo CPU opera folgadamente aqui
+        limits:
+          memory: 4096M
+
+  # LLM Generativo de Alta Velocidade (Ollama + Llama 3.2 3B)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    environment:
+      - OLLAMA_NUM_PARALLEL=1 # Mantido para focar toda a CPU em uma requisição por vez
+      - OLLAMA_MAX_QUEUE=1    # Evita gargalos acumulando requisições na CPU
+    deploy:
+      resources:
+        reservations:
+          memory: 3048M       # Espaço ideal para o Llama 3.2 3B rodar confortável
+        limits:
+          memory: 6144M       # Teto seguro para não deixar o Ubuntu sem memória swap
 
 volumes:
   hf_cache:
-  
+  ollama_data:

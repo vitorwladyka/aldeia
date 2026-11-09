@@ -78,6 +78,20 @@ ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
   `config_llm.json` e `config_lbm.json`, editáveis pela página de Configuração.
 - O provedor Bedrock usa as credenciais AWS do ambiente, não a `GROQ_API_KEY`.
 
+#### Perfis de LLM
+
+O `config_llm.json` guarda vários **perfis** nomeados e qual está ativo. Em
+Configuração, o seletor "Perfil do LLM" troca de provedor com um clique (vale já
+na próxima decisão). Perfis prontos: `groq`, `local-llama` e `local-minicpm`
+(Ollama em `localhost:11434`) e `claude` (Anthropic). "Novo perfil" copia o atual.
+
+Cada perfil guarda provedor, modelo, temperatura e os ajustes de "Avançado":
+timeout, máx. de tokens, `reasoning_effort` (use `none` no MiniCPM) e limite de
+tokens/min. As chaves continuam só no `.env`: `GROQ_API_KEY` (Groq e
+OpenAI-compatível) e `ANTHROPIC_API_KEY` (Claude). Servidores `localhost` não
+precisam de chave. O arquivo é local (está no `.gitignore`); num clone novo os
+perfis prontos aparecem sozinhos.
+
 ## Decisores
 
 | Decisor | Descrição | Latência | Rede |

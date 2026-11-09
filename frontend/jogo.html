@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Jogo — Aldeia de Agentes</title>
-  <link rel="stylesheet" href="css/estilo.css?v=18">
+  <link rel="stylesheet" href="css/estilo.css?v=20">
 </head>
 <body>
   <header>
@@ -37,7 +37,7 @@
         <label id="label-lbm" title="Com LBM: Laya decide primeiro e só escala para o LLM em caso de confiança baixa ou colisão. Sem LBM: chama o LLM direto.">
           <input type="checkbox" id="f-lbm" checked> usar LBM (Laya → LLM)
         </label>
-        <label>Rodadas conselho: <input type="number" id="f-rodadas" value="1" min="0" max="10" style="width:60px"></label>
+        <label title="Depois que cada agente coloca sua carta, quantas passadas de conversa o conselho faz (para cedo se ninguém mudar de carta). 0 = sem discussão.">Passadas de discussão: <input type="number" id="f-rodadas" value="1" min="0" max="10" style="width:60px"></label>
         <button id="btn-criar" class="primary">Criar partida</button>
         <p id="aviso-llm" hidden style="color: var(--danger); font-size: 12px; margin-top: 8px;">
           ⚠ Decisor LLM selecionado. Configure o LLM em <a href="config.html">Configuração</a> antes.
@@ -80,65 +80,12 @@
         </div>
 
         <div class="flow-section">
-          <h3>🧭 Fluxo de Decisão Híbrido <span class="hint">(Laya → LLM)</span></h3>
-          <div id="flow-container">
-            <div class="flow-step">
-              <div class="step-icon">👥</div>
-              <div class="step-content">
-                <div class="step-title">Agente observa o mundo</div>
-                <div class="step-desc">Estado via MCP — estoque, vidas, ações viáveis</div>
-              </div>
-            </div>
-            <div class="flow-arrow">↓</div>
-            <div class="flow-step lbm">
-              <div class="step-icon">⚡</div>
-              <div class="step-content">
-                <div class="step-title">Laya (LBM) decide</div>
-                <div class="step-desc">Roteamento rápido — responde em ~500ms</div>
-              </div>
-            </div>
-            <div class="flow-arrow">↓</div>
-            <div class="flow-step" id="flow-confidence">
-              <div class="step-icon">📊</div>
-              <div class="step-content">
-                <div class="step-title">Confiança da resposta</div>
-                <div class="step-desc">Threshold: <span id="flow-threshold" class="text-mono">0.50</span></div>
-                <div class="confidence-bar-container">
-                  <div class="confidence-bar">
-                    <div class="confidence-bar-fill" id="flow-conf-fill" style="width:0%"></div>
-                    <div class="confidence-threshold" id="flow-threshold-marker" style="left:50%"></div>
-                  </div>
-                  <span class="confidence-value" id="flow-conf-value">—</span>
-                </div>
-              </div>
-            </div>
-            <div class="flow-arrow branch">
-              <span class="yes">↙ conf ≥ threshold</span>
-              <span class="no">conf &lt; threshold ↘</span>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-              <div class="flow-step lbm" id="flow-path-lbm">
-                <div class="step-icon">✓</div>
-                <div class="step-content">
-                  <div class="step-title">Laya decide</div>
-                  <div class="step-desc">rápido + barato</div>
-                </div>
-              </div>
-              <div class="flow-step llm" id="flow-path-llm">
-                <div class="step-icon">⚠</div>
-                <div class="step-content">
-                  <div class="step-title">LLM</div>
-                  <div class="step-desc">assume caso complexo</div>
-                </div>
-              </div>
-            </div>
+          <h3>🧭 Decisões por agente <span class="hint" id="flow-turno">(último turno)</span></h3>
+          <div class="text-xs text-muted" style="margin-bottom:10px">
+            Cada agente passa por: 📏 regras → ⚡ Laya (se confiante) → 🧠 LLM (conselho).
           </div>
-          <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-            <div class="text-xs text-muted" style="text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px">
-              Decisões do último turno
-            </div>
-            <div id="flow-decisions"></div>
-          </div>
+          <div id="flow-resumo" class="flow-resumo"></div>
+          <div id="flow-decisions" class="agente-cards"><p class="text-xs text-muted">Aguardando decisão…</p></div>
         </div>
       </div>
 
@@ -221,7 +168,7 @@
     </div>
   </div>
 
-  <script src="js/api.js?v=18"></script>
-  <script src="js/jogo.js?v=18"></script>
+  <script src="js/api.js?v=20"></script>
+  <script src="js/jogo.js?v=21"></script>
 </body>
 </html>

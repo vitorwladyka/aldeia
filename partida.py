@@ -21,13 +21,15 @@ import time
 from datetime import datetime, timezone
 
 from core import motor, observacao, placar as placar_mod
-from core.acoes import acoes_viaveis, reservar_acao
+from core.acoes import (acoes_viaveis, reservar_acao, detectar_conflitos,
+                        alertas_aldeia)
 from core.estado import Agente, Estado
 from core.hashing import cenario_hash, mcp_config_hash, preset_hash
 from core.mcp_cliente import MundoMemoria
 from core.preset import Preset
 from decisores import bot as _bot
 from decisores import laya_router as _lbm
+from decisores import regras as _regras
 from hibrido import decidir as _hibrido
 from hibrido import local_da_acao as _hibrido_local
 from hibrido import _carregar_threshold as _hibrido_threshold
@@ -51,10 +53,14 @@ REGRAS DO MUNDO:
 - É comida: peixe, carne, pão, peixe_assado e carne_assada.
 - Não é comida: trigo, erva, madeira e remédio — precisam ser transformados.
 
+CONSELHO:
+- Todo turno a aldeia se reúne: cada um coloca uma carta (ação) na mesa, depois vocês conversam e podem trocar de carta. As cartas finais são executadas.
+- Converse de verdade: reaja ao que os outros disseram, aponte conflitos de recurso e necessidades sem cobertura, proponha divisão de tarefas.
+- Fale pelo parâmetro `mensagem` da tool que você chamar (1-2 frases).
+
 DECISÃO:
-- Escolha apenas entre as ações viáveis listadas.
-- Na fase de conversa: responda com uma mensagem curta com sua intenção.
-- Na fase de decisão: responda com exatamente uma ação."""
+- Escolha apenas entre as ações viáveis (as tools disponíveis).
+- Chame exatamente uma tool: a da sua ação final."""
 
 
 NOMES_AGENTES = ["Aria", "Bento", "Cael", "Dara", "Elio", "Fenna", "Guto",
@@ -301,6 +307,156 @@ def _decisao_para_historico(d, lat: int, turno: int, agente_idx: int) -> dict:
     }
 
 
+def _carta_cabe(carta: dict, viaveis: list[dict]) -> bool:
+    """True se a carta (ação + alvo) ainda é viável dadas as ações viáveis atuais."""
+    v = next((x for x in viaveis if x["acao"] == carta["acao"]), None)
+    if v is None:
+        return False
+    if carta["acao"] == "curar":
+        return carta.get("alvo") in (v.get("alvos") or [])
+    return True
+
+
+def _conselho_discussao(p: dict, estado, preset, mensagens: list, prox_turno: int,
+                        participantes: list[int], travadas: dict,
+                        reservas_travadas: dict, passadas: int,
+                        origens: dict | None = None):
+    """Conselho com discussão real entre agentes LLM.
+
+    1. PROPOSTA (às cegas): cada participante coloca uma carta (ação) na mesa
+       sem ver as propostas dos outros — só as cartas travadas pela Laya.
+    2. DISCUSSÃO: `passadas` passadas, na ordem do turno. Cada agente vê a mesa
+       completa (cartas, conflitos, necessidades, falas) e responde em UMA
+       chamada: fala (`mensagem`) + carta final, que pode ser diferente da
+       anterior. Para cedo quando uma passada termina sem ninguém trocar de carta.
+    3. AJUSTE (rede de segurança): em ordem, o agente cuja carta já não cabe
+       (insumo, alimento ou alvo de cura comprometido por cartas anteriores)
+       decide de novo com as opções que restam. Garante zero ações inválidas.
+
+    Retorna (acoes_decididas, decisoes_hist) dos participantes.
+    """
+    from decisores import llm as _llm_mod
+    from decisores.bot import Decisao
+
+    nomes = {a.indice: a.nome for a in estado.agentes}
+    ordem = {i: n for n, i in enumerate(estado.ordem_turno)}
+
+    # Cartas travadas (decididas pela Laya na fase 0): visíveis, mas não falam.
+    travadas_cartas = {
+        i: {"acao": ad.acao, "alvo": ad.alvo, "travada": True,
+            "origem": (origens or {}).get(i, "lbm")}
+        for i, ad in travadas.items()
+    }
+    cartas: dict[int, dict] = {i: dict(c) for i, c in travadas_cartas.items()}
+    decisoes_ult: dict[int, dict] = {}
+    falas: list[dict] = []
+
+    def _publicar(idx, rodada, texto, acao):
+        mensagens.append({"turno": prox_turno, "rodada": rodada, "agente": idx,
+                          "texto": texto, "intencao_declarada": acao})
+
+    def _mesa(idx, fase, base, passada=0, motivo=None):
+        lista = [
+            {"agente": i, "nome": nomes[i], "acao": c["acao"], "alvo": c["alvo"],
+             "travada": c["travada"], "origem": c.get("origem"), "eu": i == idx}
+            for i, c in sorted(base.items(), key=lambda kv: ordem.get(kv[0], 99))
+        ]
+        return {"fase": fase, "passada": passada, "cartas": lista,
+                "conflitos": detectar_conflitos(estado, lista, preset),
+                "alertas": alertas_aldeia(estado, preset),
+                "falas": list(falas), "motivo_ajuste": motivo}
+
+    def _decidir(idx, viaveis, mesa):
+        # `mensagens=[]`: as falas do conselho vão na mesa (sem truncar o prompt).
+        obs = observacao.gerar(estado, idx, preset, p["n_turnos"], viaveis,
+                               _historico_para_obs(p["historico"], idx), [])
+        _injetar_cfg_obs(p, obs, idx)
+        obs["_mesa"] = mesa
+        prompt = _agente_cfg(p, idx)["prompt"]
+        t0 = time.time()
+        d = _llm_mod.decidir(obs, prompt, idx)
+        return d, int((time.time() - t0) * 1000)
+
+    vivos_part = [i for i in participantes if estado.agente(i).vivo]
+    if not vivos_part:
+        return [], []
+
+    # ---- 1. PROPOSTA (às cegas) ----
+    for idx in vivos_part:
+        a = estado.agente(idx)
+        viaveis = acoes_viaveis(estado, idx, preset, reservas_travadas)
+        if not viaveis:
+            d, lat = Decisao("passar", None, 1.0, "bot", "sem ações viáveis"), 0
+        else:
+            d, lat = _decidir(idx, viaveis, _mesa(idx, "proposta", travadas_cartas))
+        cartas[idx] = {"acao": d.acao, "alvo": d.alvo, "travada": False}
+        decisoes_ult[idx] = _decisao_para_historico(d, lat, prox_turno, idx)
+        _publicar(idx, 1, "Proposta: " + _gerar_mensagem_conselho(d, a, 1, False, 0),
+                  d.acao)
+        print(f"[PROPOSTA] agente={idx} ({a.nome}) → {d.acao}"
+              + (f" alvo={d.alvo}" if d.alvo is not None else ""), flush=True)
+
+    # ---- 2. DISCUSSÃO ----
+    for passada in range(1, passadas + 1):
+        rodada = passada + 1
+        mudou = False
+        for idx in vivos_part:
+            a = estado.agente(idx)
+            viaveis = acoes_viaveis(estado, idx, preset, reservas_travadas)
+            if not viaveis:
+                continue
+            antes = (cartas[idx]["acao"], cartas[idx]["alvo"])
+            d, lat = _decidir(idx, viaveis, _mesa(idx, "discussao", cartas, passada))
+            if (d.raciocinio or "").startswith("fallback"):
+                # LLM indisponível (rede, limite de taxa, sem escolha): NÃO troca a
+                # carta por "a primeira ação viável" — mantém a que já está na mesa.
+                print(f"[DISCUSSAO] P{passada} agente={idx} ({a.nome}) LLM "
+                      f"indisponível ({d.raciocinio}) → mantém {antes[0]}", flush=True)
+                continue
+            texto = d.mensagem or (
+                _gerar_mensagem_conselho(d, a, rodada, False, 0) + " (sem comentário)")
+            cartas[idx].update(acao=d.acao, alvo=d.alvo)
+            if (d.acao, d.alvo) != antes:
+                mudou = True
+            decisoes_ult[idx] = _decisao_para_historico(d, lat, prox_turno, idx)
+            falas.append({"nome": a.nome, "texto": texto})
+            _publicar(idx, rodada, texto, d.acao)
+            print(f"[DISCUSSAO] P{passada} agente={idx} ({a.nome}) "
+                  f"{'MUDOU' if (d.acao, d.alvo) != antes else 'manteve'} "
+                  f"{antes[0]} → {d.acao} | {texto[:100]}", flush=True)
+        if not mudou:
+            mensagens.append({
+                "turno": prox_turno, "rodada": rodada, "agente": None,
+                "texto": f"✓ Consenso: ninguém mudou de carta na passada {passada}.",
+                "intencao_declarada": None,
+            })
+            print(f"[CONSENSO] ninguém mudou de carta na passada {passada}", flush=True)
+            break
+
+    # ---- 3. AJUSTE (rede de segurança) ----
+    reservas = dict(reservas_travadas)
+    for idx in vivos_part:
+        a = estado.agente(idx)
+        carta = cartas[idx]
+        viaveis = acoes_viaveis(estado, idx, preset, reservas)
+        if not _carta_cabe(carta, viaveis):
+            motivo = (f"'{carta['acao']}' já não cabe: os recursos (insumo, alimento "
+                      f"ou alvo de cura) foram comprometidos por cartas anteriores")
+            d, lat = _decidir(idx, viaveis, _mesa(idx, "ajuste", cartas, 0, motivo))
+            print(f"[AJUSTE] agente={idx} ({a.nome}) {carta['acao']} → {d.acao} "
+                  f"({motivo})", flush=True)
+            carta.update(acao=d.acao, alvo=d.alvo)
+            decisoes_ult[idx] = _decisao_para_historico(d, lat, prox_turno, idx)
+            texto = d.mensagem or _gerar_mensagem_conselho(d, a, passadas + 2, False, 0)
+            _publicar(idx, passadas + 2, "Ajuste: " + texto, d.acao)
+        reservar_acao(reservas, carta["acao"], carta["alvo"], preset)
+
+    acoes = [motor.AcaoDecidida(agente=i, acao=cartas[i]["acao"], alvo=cartas[i]["alvo"])
+             for i in vivos_part]
+    decs = [decisoes_ult[i] for i in vivos_part]
+    return acoes, decs
+
+
 def _rodar_conselho(p: dict, estado, preset, mensagens: list,
                      prox_turno: int, rodadas: int):
     """Roda N rodadas de conselho entre os agentes vivos.
@@ -335,12 +491,34 @@ def _rodar_conselho(p: dict, estado, preset, mensagens: list,
 
     usa_lbm = (p["decisor"] == "llm" and p.get("lbm_habilitado", True))
 
+    # ---- FASE R: regras determinísticas (antes da Laya e do LLM) ----
+    # Só no decisor "llm". Quem a regra resolve fica com decisão final, ocupa o
+    # local e reserva insumos/alimento/cura; os demais seguem para a Laya/LLM.
+    if p["decisor"] == "llm":
+        for idx in estado.ordem_turno:
+            if not estado.agente(idx).vivo:
+                continue
+            viaveis_r = acoes_viaveis(estado, idx, preset, reservas_resolvidas)
+            d_r = _regras.decidir(estado, idx, viaveis_r, preset,
+                                  reservas_resolvidas, locais_resolvidos)
+            if d_r is None:
+                continue
+            acoes_finais[idx] = motor.AcaoDecidida(
+                agente=idx, acao=d_r.acao, alvo=d_r.alvo)
+            decisoes_finais[idx] = _decisao_para_historico(d_r, 0, prox_turno, idx)
+            loc_r = _hibrido_local(d_r.acao, preset)
+            locais_resolvidos[loc_r] = locais_resolvidos.get(loc_r, 0) + 1
+            reservar_acao(reservas_resolvidas, d_r.acao, d_r.alvo, preset)
+            print(f"[REGRA] agente={idx} → {d_r.acao}"
+                  + (f" alvo={d_r.alvo}" if d_r.alvo is not None else "")
+                  + f" | {d_r.raciocinio}", flush=True)
+
     # ---- FASE 0: pré-resolução pela LBM ----
     if usa_lbm:
         sat = preset.saturacao_limite
         for idx in estado.ordem_turno:
             a = estado.agente(idx)
-            if not a.vivo:
+            if not a.vivo or idx in acoes_finais:
                 continue
             viaveis = acoes_viaveis(estado, a.indice, preset, reservas_resolvidas)
             if not viaveis:
@@ -392,7 +570,23 @@ def _rodar_conselho(p: dict, estado, preset, mensagens: list,
     if usa_lbm:
         participantes = a_escalar
     else:
-        participantes = [i for i in estado.ordem_turno if estado.agente(i).vivo]
+        participantes = [i for i in estado.ordem_turno
+                         if estado.agente(i).vivo and i not in acoes_finais]
+
+    # Decisor LLM: conselho com discussão real (cartas → conversa → ajuste).
+    if p["decisor"] == "llm":
+        passadas = max(0, int(p.get("rodadas_conselho", 1) or 0))
+        acoes_c, decs_c = _conselho_discussao(
+            p, estado, preset, mensagens, prox_turno, participantes,
+            dict(acoes_finais), reservas_resolvidas, passadas,
+            origens={i: d["origem"] for i, d in decisoes_finais.items()})
+        for ad in acoes_c:
+            acoes_finais[ad.agente] = ad
+        for dh in decs_c:
+            decisoes_finais[dh["indice"]] = dh
+        acoes = [acoes_finais[i] for i in estado.ordem_turno if i in acoes_finais]
+        decs = [decisoes_finais[i] for i in estado.ordem_turno if i in decisoes_finais]
+        return acoes, decs
 
     acoes_decididas = []
     decisoes_hist = []
@@ -448,17 +642,10 @@ def _rodar_conselho(p: dict, estado, preset, mensagens: list,
             cfg_ag = _agente_cfg(p, a.indice)
             prompt_agente = cfg_ag["prompt"]
 
-            # Agentes escalados (usa_lbm) vão direto ao LLM — a LBM já os
-            # descartou na fase 0. Os demais seguem o decisor configurado.
-            if usa_lbm:
-                from decisores import llm as _llm_mod
-                t0 = time.time()
-                d = _llm_mod.decidir(obs, prompt_agente, a.indice)
-                lat = int((time.time() - t0) * 1000)
-            else:
-                d, lat = _decidir_para_agente(p, obs, prompt_agente, a.indice,
-                                              preset=preset,
-                                              locais_ocupados=locais_ocupados)
+            # Este laço só atende o decisor bot (o LLM usa _conselho_discussao).
+            d, lat = _decidir_para_agente(p, obs, prompt_agente, a.indice,
+                                          preset=preset,
+                                          locais_ocupados=locais_ocupados)
 
             # Registra o local ocupado pela ação final deste agente, para que
             # os próximos agentes da rodada vejam a colisão acumulada.

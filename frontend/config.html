@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Configuração — Aldeia de Agentes</title>
-  <link rel="stylesheet" href="css/estilo.css?v=18">
+  <link rel="stylesheet" href="css/estilo.css?v=20">
 </head>
 <body>
   <header>
@@ -21,14 +21,32 @@
   <main>
     <h2>Configuração LLM</h2>
     <p>Valores padrão para novas partidas. A <strong>chave de API não é configurada aqui</strong> —
-       defina <code>GROQ_API_KEY</code> no arquivo <code>.env</code> na raiz do projeto.</p>
+       defina a chave do provedor (<code>GROQ_API_KEY</code> ou <code>ANTHROPIC_API_KEY</code>) no arquivo <code>.env</code> na raiz do projeto.</p>
+
+    <div id="llm-perfis" style="margin:12px 0;padding:10px;border:1px solid var(--border);border-radius:var(--radius)">
+      <label><strong>Perfil do LLM</strong> (trocar vale já na próxima decisão):
+        <select id="llm-perfil"></select>
+      </label>
+      <button id="btn-perfil-novo" type="button" title="Cria uma cópia do perfil atual e a ativa">Novo perfil (copiar atual)</button>
+      <button id="btn-perfil-excluir" type="button" class="danger">Excluir</button>
+      <span id="llm-perfil-info" class="text-xs text-muted"></span>
+    </div>
 
     <label>Provedor:
       <select id="llm-provedor">
         <option value="groq">Groq (recomendado — rápido e gratuito)</option>
         <option value="openai">OpenAI-compatível (Ollama, OpenAI, LM Studio)</option>
+        <option value="anthropic">Anthropic (Claude)</option>
       </select>
     </label><br>
+
+    <div id="campos-anthropic" hidden>
+      <p><strong>Anthropic:</strong> pegue sua chave em
+         <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>
+         e defina <code>ANTHROPIC_API_KEY</code> no <code>.env</code>.
+         Não há Base URL: o cliente já usa <code>https://api.anthropic.com</code>.</p>
+      <label>Modelo: <input type="text" id="llm-model-anthropic" size="50" value="claude-haiku-4-5-20251001"></label><br>
+    </div>
 
     <div id="campos-groq">
       <p><strong>Groq:</strong> pegue sua chave em <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a></p>
@@ -54,7 +72,16 @@
     </div>
 
     <label>Temperatura: <input type="number" id="llm-temp" step="0.1" value="0.7"></label><br>
-    <p>Chave de API (<code>GROQ_API_KEY</code> no <code>.env</code>): <span id="llm-key-status"></span></p>
+
+    <details style="margin:8px 0">
+      <summary>Avançado (modelos locais/lentos e limites)</summary>
+      <label title="Quanto esperar por resposta. Modelos locais precisam de ~300 na 1ª chamada.">Timeout (s): <input type="number" id="llm-timeout" min="1" step="1" style="width:80px" placeholder="30"></label><br>
+      <label title="Limite de tokens da resposta (tool + fala).">Máx. tokens de saída: <input type="number" id="llm-maxtok" min="1" step="1" style="width:80px" placeholder="400"></label><br>
+      <label title="Envie 'none' para desligar o raciocínio (thinking) de modelos como MiniCPM no Ollama. Vazio = não envia.">Reasoning effort: <input type="text" id="llm-reasoning" size="10" placeholder="(vazio)"></label><br>
+      <label title="Tokens por minuto aceitos pelo provedor; o app espera para não estourar o limite. 0/vazio = sem limitador.">Limite de tokens/min: <input type="number" id="llm-tpm" min="0" step="100" style="width:90px" placeholder="0"></label>
+    </details>
+
+    <p>Chave de API (<code id="llm-key-var">GROQ_API_KEY</code> no <code>.env</code>): <span id="llm-key-status"></span></p>
     <button id="btn-llm">Salvar LLM</button>
     <button id="btn-testar-llm">Testar conexão</button>
     <span id="llm-teste-resultado"></span>
@@ -86,7 +113,7 @@
     <button id="btn-testar-lbm">Testar conexão</button>
     <span id="lbm-teste-resultado"></span>
   </main>
-  <script src="js/api.js?v=18"></script>
-  <script src="js/config.js?v=18"></script>
+  <script src="js/api.js?v=20"></script>
+  <script src="js/config.js?v=20"></script>
 </body>
 </html>

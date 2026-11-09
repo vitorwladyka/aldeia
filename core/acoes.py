@@ -127,3 +127,113 @@ def insumos_consumidos(acao_id: str, preset: Preset) -> dict[str, int]:
     if acao_id == "curar":
         return {"remedio": 1}
     return {}
+
+
+# --------------------------------------------------------------------------
+# Mesa do conselho: conflitos entre cartas e alertas da aldeia
+# --------------------------------------------------------------------------
+
+
+def detectar_conflitos(estado: Estado, cartas: list[dict], preset: Preset) -> list[str]:
+    """Descreve, em texto, onde as cartas atuais da mesa disputam o mesmo recurso.
+
+    `cartas` é uma lista de {"agente", "nome", "acao", "alvo"} (todas as cartas
+    na mesa, inclusive as travadas pela Laya). Não bloqueia nada: serve para o
+    conselho enxergar o problema e discutir. A rede de segurança que invalida
+    cartas impossíveis fica no fim da discussão.
+    """
+    conflitos: list[str] = []
+
+    def quem(lst: list[dict]) -> str:
+        return ", ".join(f"{c['nome']} ({c['acao']})" for c in lst)
+
+    # 1. Insumos / remédio pedidos acima do estoque
+    totais: dict[str, int] = {}
+    por_item: dict[str, list[dict]] = {}
+    for c in cartas:
+        for item, qtd in insumos_consumidos(c["acao"], preset).items():
+            totais[item] = totais.get(item, 0) + qtd
+            por_item.setdefault(item, []).append(c)
+    for item, total in totais.items():
+        disp = estado.estoque.get(item, 0)
+        if total > disp:
+            conflitos.append(
+                f"Insumo '{item}': as cartas pedem {total}, mas o estoque tem "
+                f"{disp} — {quem(por_item[item])}")
+
+    # 2. Custo total em alimento acima do disponível
+    custo_total = sum(preset.acoes.get(c["acao"], {}).get("custo", 0) for c in cartas)
+    disponivel = estado.disponivel(preset)
+    if custo_total > disponivel:
+        conflitos.append(
+            f"Alimento: os custos das cartas somam {custo_total}, mas só há "
+            f"{disponivel} disponível")
+
+    # 3. Saturação de local de coleta
+    por_local: dict[str, list[dict]] = {}
+    for c in cartas:
+        a = preset.acoes.get(c["acao"], {})
+        if a.get("categoria") == "coletar" and a.get("local"):
+            por_local.setdefault(a["local"], []).append(c)
+    for local, lst in por_local.items():
+        if len(lst) > preset.saturacao_limite:
+            conflitos.append(
+                f"Local '{local}': {len(lst)} agentes ({quem(lst)}); só "
+                f"{preset.saturacao_limite} rendem plenamente")
+
+    # 4. Cura duplicada além do necessário
+    curas: dict[int, list[dict]] = {}
+    for c in cartas:
+        if c["acao"] == "curar" and c.get("alvo") is not None:
+            curas.setdefault(c["alvo"], []).append(c)
+    for alvo, lst in curas.items():
+        try:
+            ag = estado.agente(alvo)
+        except StopIteration:
+            continue
+        faltam = preset.vida_max - ag.vida
+        if len(lst) > faltam:
+            conflitos.append(
+                f"Cura: {len(lst)} agentes querem curar {ag.nome}, que só "
+                f"precisa de {max(faltam, 0)} cura(s) — {quem(lst)}")
+
+    return conflitos
+
+
+def alertas_aldeia(estado: Estado, preset: Preset) -> list[str]:
+    """Resumo das necessidades da aldeia no turno (para orientar a discussão)."""
+    alertas: list[str] = []
+    vivos = [a for a in estado.agentes if a.vivo]
+    if not vivos:
+        return alertas
+
+    # Comida x basal
+    basal = preset.basal_inverno if estado.estacao == "inverno" else preset.basal_normal
+    por_turno = max(basal * len(vivos), 1)
+    disponivel = estado.disponivel(preset)
+    turnos_cobertos = disponivel // por_turno
+    if turnos_cobertos < 3:
+        alertas.append(
+            f"Comida disponível ({disponivel}) cobre só {turnos_cobertos} turno(s) "
+            f"de basal ({por_turno}/turno para {len(vivos)} vivos)")
+
+    # Feridos x remédio
+    feridos = [a for a in vivos if a.vida < preset.vida_max]
+    if feridos:
+        nomes = ", ".join(f"{a.nome}(vida {a.vida})" for a in feridos)
+        remedio = estado.estoque.get("remedio", 0)
+        alertas.append(f"Feridos: {nomes}; remédio em estoque: {remedio}")
+
+    # Insumos críticos: usados em várias receitas e quase zerados
+    uso: dict[str, int] = {}
+    for a in preset.acoes.values():
+        if a.get("categoria") == "transformar":
+            for item in a.get("insumos", {}):
+                uso[item] = uso.get(item, 0) + 1
+    for item, n_receitas in sorted(uso.items()):
+        qtd = estado.estoque.get(item, 0)
+        if n_receitas >= 2 and qtd <= 1:
+            alertas.append(
+                f"Insumo crítico: {item}={qtd} (necessário em {n_receitas} receitas)")
+
+    return alertas

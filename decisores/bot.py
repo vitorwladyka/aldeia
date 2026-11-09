@@ -17,6 +17,9 @@ class Decisao:
     confianca: float = 1.0
     origem: str = "bot"  # bot | lbm | llm
     raciocinio: str = ""
+    # Fala do agente para os demais no conselho (escrita pelo LLM na mesma
+    # chamada que escolhe a ação). Vazia quando o decisor não fala (bot/Laya).
+    mensagem: str = ""
 
 
 def decidir(observacao: dict, prompt_agente: str, agente_idx: int) -> Decisao:

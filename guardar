@@ -4,3 +4,10 @@ source .venv/bin/activate
 pip install -r requirements.txt
 python3 server.py
 
+docker compose up
+docker exec -it ollama ollama run llama3.2
+curl http://localhost:11434/api/generate -d '{
+  "model": "llama3.2",
+  "prompt": "Explique o que é Docker em uma frase curta.",
+  "stream": false
+}'

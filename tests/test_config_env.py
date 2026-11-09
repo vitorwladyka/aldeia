@@ -28,3 +28,18 @@ def test_config_laya_tem_campos(monkeypatch):
     assert "url" in c and "timeout_s" in c and "threshold" in c
     assert isinstance(c["timeout_s"], float)
     assert isinstance(c["threshold"], float)
+
+
+def test_api_key_anthropic_usa_a_propria_variavel(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_groq")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chave-anthropic")
+    assert config_env.api_key("anthropic") == "chave-anthropic"
+    assert config_env.api_key("groq") == "gsk_groq"
+    assert config_env.api_key() == "gsk_groq"            # padrão = Groq
+    assert config_env.api_key("openai") == "gsk_groq"    # compat. como antes
+
+
+def test_api_key_anthropic_ausente(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_groq")
+    assert config_env.api_key("anthropic") is None       # não cai na chave da Groq

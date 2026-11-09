@@ -22,6 +22,8 @@ Rotas (compatíveis com `frontend/js/api.js`):
 - GET  /config/lbm/perfis              — lista perfis
 - POST /config/lbm/testar              — testa LBM (heurística)
 - GET  /comparar?a=X&b=Y               — compara duas partidas
+- GET  /ranking                        — partidas ordenadas por pontuação
+- GET  /ranking/partida/{id}           — pontuação final (404 se não encerrada)
 - DELETE /partidas                     — limpa tudo (usado pelo botão 🗑️)
 - /  →  serve frontend/index.html e estáticos
 
@@ -30,8 +32,6 @@ Rodar:  python server.py   (ou uvicorn server:app --reload)
 from __future__ import annotations
 
 import json
-import subprocess
-import tempfile
 import time
 from pathlib import Path
 
@@ -45,7 +45,6 @@ import armazenamento
 from mcp_mundo import config_mcp
 
 ROOT = Path(__file__).parent
-CAMINHO_CONFIG_LLM = ROOT / "config_llm.json"
 CAMINHO_CONFIG_LBM = ROOT / "config_lbm.json"
 FRONTEND_DIR = ROOT / "frontend"
 
@@ -376,39 +375,141 @@ def _salvar_config(caminho: Path, dados: dict) -> None:
     caminho.write_text(json.dumps(dados, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-PADRAO_LLM = {
-    "provedor": "zai",
-    "model": "z-ai-chat",
-    "base_url": "",
-    "api_key_configured": False,
-    "temperature": 0.7,
-    "modo": "json",
-}
+def _visao_config_llm() -> dict:
+    """Perfil ATIVO no formato plano que a tela já usa + lista de perfis.
+
+    Nunca inclui a chave de API: só o flag `api_key_configured` (variável do
+    provedor do perfil ativo no .env).
+    """
+    import config_env
+    dados = config_env.ler_llm()
+    ativo = dados["perfil_ativo"]
+    cfg = dict(dados["perfis"][ativo])
+    cfg["perfil_ativo"] = ativo
+    cfg["perfis"] = [
+        {"nome": nome, "provedor": pf.get("provedor"), "model": pf.get("model")}
+        for nome, pf in dados["perfis"].items()
+    ]
+    cfg["api_key_configured"] = bool(config_env.api_key(cfg.get("provedor")))
+    return cfg
+
+
+def _perfil_ou_400(fn, *args):
+    import config_env
+    try:
+        fn(*args)
+    except config_env.PerfilInvalido as e:
+        raise HTTPException(400, str(e))
+
+
+# ==================== Ranking ====================
+
+
+def _placar_atual(p: dict) -> dict | None:
+    """Placar final (se encerrada) ou o parcial do último turno executado."""
+    if p.get("placar_final"):
+        return p["placar_final"]
+    for h in reversed(p.get("historico") or []):
+        if h.get("placar"):
+            return h["placar"]
+    return None
+
+
+def _linha_ranking(p: dict) -> dict:
+    from core import placar as placar_mod
+    pl = _placar_atual(p) or {}
+    pontuacao = pl.get("pontuacao_total", 0)
+    return {
+        "id": p["id"],
+        "nome": p.get("nome") or f"Partida #{p['id']}",
+        "seed": p["seed"],
+        "decisor": p["decisor"],
+        "lbm_habilitado": p.get("lbm_habilitado", True),
+        "status": partida._status_upper(p["status"]),
+        "turno_atual": p.get("turno_atual", 0),
+        "n_turnos": p["n_turnos"],
+        "n_agentes": p["n_agentes"],
+        "n_vivos": pl.get("n_vivos", p["n_agentes"] if not pl else 0),
+        "soma_vidas": pl.get("soma_vidas", 0),
+        "valor_estoque": pl.get("valor_estoque", 0),
+        "pontuacao_total": pontuacao,
+        "classificacao": placar_mod.classificacao(pontuacao) if pl else None,
+    }
+
+
+@app.get("/ranking")
+def ranking():
+    """Todas as partidas ordenadas pela pontuação (final ou parcial)."""
+    linhas = []
+    for meta in armazenamento.listar():
+        p = armazenamento.carregar(meta["id"])
+        if p is not None:
+            linhas.append(_linha_ranking(p))
+    linhas.sort(key=lambda l: (-l["pontuacao_total"], l["id"]))
+    return {"ranking": linhas}
+
+
+@app.get("/ranking/partida/{pid}")
+def ranking_partida(pid: int):
+    """Pontuação final de uma partida. 404 enquanto não estiver encerrada."""
+    from core import placar as placar_mod
+    p = armazenamento.carregar(pid)
+    if p is None:
+        raise HTTPException(404, "partida não encontrada")
+    if p["status"] != "encerrada" or not p.get("placar_final"):
+        raise HTTPException(404, "partida ainda em andamento")
+    pl = p["placar_final"]
+    return {
+        **_linha_ranking(p),
+        "resultado": pl,
+        "classificacao": placar_mod.classificacao(pl.get("pontuacao_total", 0)),
+    }
 
 
 @app.get("/config/llm")
 def get_config_llm():
-    import config_env
-    cfg = _ler_config(CAMINHO_CONFIG_LLM, PADRAO_LLM)
-    cfg.pop("api_key", None)  # nunca devolve a chave
-    # O flag reflete a presença de GROQ_API_KEY no ambiente (.env).
-    cfg["api_key_configured"] = bool(config_env.api_key())
-    return cfg
+    return _visao_config_llm()
 
 
 @app.put("/config/llm")
 async def put_config_llm(req: Request):
-    body = await req.body()
-    dados = json.loads(body.decode("utf-8"))
-    cfg_atual = _ler_config(CAMINHO_CONFIG_LLM, PADRAO_LLM)
-    # A api_key NÃO é persistida no JSON — segredo vive só no .env (GROQ_API_KEY).
-    dados.pop("api_key", None)
-    cfg_atual.update(dados)
-    cfg_atual.pop("api_key", None)
+    """Salva os campos no perfil ATIVO (ou em `perfil`, se informado)."""
     import config_env
-    cfg_atual["api_key_configured"] = bool(config_env.api_key())
-    _salvar_config(CAMINHO_CONFIG_LLM, cfg_atual)
-    return cfg_atual
+    dados = json.loads((await req.body()).decode("utf-8"))
+    nome = dados.pop("perfil", None) or config_env.ler_llm()["perfil_ativo"]
+    # A api_key NÃO é persistida no JSON — segredo vive só no .env
+    # (GROQ_API_KEY ou ANTHROPIC_API_KEY, conforme o provedor).
+    dados.pop("api_key", None)
+    _perfil_ou_400(config_env.atualizar_perfil, nome, dados)
+    return _visao_config_llm()
+
+
+class PerfilNomeReq(BaseModel):
+    nome: str
+    copiar_de: str | None = None
+
+
+@app.post("/config/llm/perfis")
+def criar_perfil_llm(req: PerfilNomeReq):
+    """Cria um perfil (cópia do atual) e o ativa."""
+    import config_env
+    _perfil_ou_400(config_env.criar_perfil, req.nome, req.copiar_de)
+    return _visao_config_llm()
+
+
+@app.post("/config/llm/perfil-ativo")
+def ativar_perfil_llm(req: PerfilNomeReq):
+    """Troca o perfil ativo (vale já na próxima decisão do LLM)."""
+    import config_env
+    _perfil_ou_400(config_env.ativar_perfil, req.nome)
+    return _visao_config_llm()
+
+
+@app.delete("/config/llm/perfis/{nome}")
+def excluir_perfil_llm(nome: str):
+    import config_env
+    _perfil_ou_400(config_env.excluir_perfil, nome)
+    return _visao_config_llm()
 
 
 class TestarLlmReq(BaseModel):
@@ -417,6 +518,8 @@ class TestarLlmReq(BaseModel):
     base_url: str | None = None
     modo: str | None = None
     api_key: str | None = None
+    timeout_s: float | None = None          # modelos locais demoram na 1ª chamada
+    reasoning_effort: str | None = None     # "none" desliga o "thinking"
 
 
 @app.post("/config/llm/testar")
@@ -424,13 +527,42 @@ def testar_llm(req: TestarLlmReq):
     """Testa o LLM chamando a API do provedor (Groq ou OpenAI-compat) via httpx."""
     import httpx
     import config_env
+    from agentes.strands_runner import eh_servidor_local
     t0 = time.time()
+    timeout = req.timeout_s or 30
+    # Servidor local (Ollama, LM Studio...) não precisa de chave.
+    local = (req.provedor not in ("groq", "anthropic")
+             and eh_servidor_local(req.base_url or ""))
     try:
-        # A chave vem do .env (GROQ_API_KEY); o body pode sobrepor para teste.
-        api_key = req.api_key or config_env.api_key()
+        # A chave vem do .env (conforme o provedor); o body pode sobrepor.
+        api_key = req.api_key or config_env.api_key(req.provedor)
+        if local:
+            api_key = "local"
         if not api_key:
-            return {"ok": False, "erro": "sem API key — defina GROQ_API_KEY no .env",
+            var = "ANTHROPIC_API_KEY" if req.provedor == "anthropic" else "GROQ_API_KEY"
+            return {"ok": False, "erro": f"sem API key — defina {var} no .env",
                     "latencia_ms": 0, "modelo": req.model or "?"}
+
+        # Anthropic usa a API de Messages (formato próprio), não chat/completions.
+        if req.provedor == "anthropic":
+            model = req.model or "claude-haiku-4-5-20251001"
+            with httpx.Client(timeout=timeout) as client:
+                r = client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={"x-api-key": api_key,
+                             "anthropic-version": "2023-06-01",
+                             "content-type": "application/json"},
+                    json={"model": model, "max_tokens": 10,
+                          "messages": [{"role": "user",
+                                        "content": "Responda apenas: OK"}]})
+            lat = int((time.time() - t0) * 1000)
+            if r.status_code != 200:
+                return {"ok": False, "erro": f"HTTP {r.status_code}: {r.text[:200]}",
+                        "latencia_ms": lat, "modelo": model}
+            blocos = r.json().get("content", [])
+            resposta = "".join(b.get("text", "") for b in blocos if b.get("type") == "text")
+            return {"ok": True, "latencia_ms": lat, "modelo": model,
+                    "resposta": resposta[:200]}
 
         # Endpoint por provedor
         if req.provedor == "groq":
@@ -442,14 +574,17 @@ def testar_llm(req: TestarLlmReq):
                 url = url.rstrip("/") + "/chat/completions"
             model = req.model or "gpt-4o-mini"
 
-        with httpx.Client(timeout=30) as client:
+        payload = {"model": model,
+                   "messages": [{"role": "user", "content": "Responda apenas: OK"}],
+                   "temperature": 0.7,
+                   "max_tokens": 10}
+        if req.reasoning_effort:
+            payload["reasoning_effort"] = req.reasoning_effort
+        with httpx.Client(timeout=timeout) as client:
             r = client.post(url,
                 headers={"Authorization": f"Bearer {api_key}",
                          "Content-Type": "application/json"},
-                json={"model": model,
-                      "messages": [{"role": "user", "content": "Responda apenas: OK"}],
-                      "temperature": 0.7,
-                      "max_tokens": 10})
+                json=payload)
         lat = int((time.time() - t0) * 1000)
         if r.status_code != 200:
             return {"ok": False, "erro": f"HTTP {r.status_code}: {r.text[:200]}",
@@ -459,41 +594,13 @@ def testar_llm(req: TestarLlmReq):
         return {"ok": True, "latencia_ms": lat, "modelo": model,
                 "resposta": resposta[:200]}
     except httpx.TimeoutException:
-        return {"ok": False, "erro": "timeout (30s)", "latencia_ms": 30000,
+        return {"ok": False, "erro": f"timeout ({timeout:g}s)",
+                "latencia_ms": int(timeout * 1000),
                 "modelo": req.model or "?"}
     except Exception as e:
         return {"ok": False, "erro": str(e),
                 "latencia_ms": int((time.time() - t0) * 1000),
                 "modelo": req.model or "?"}
-
-
-def testar_llm(req: TestarLlmReq):
-    """Testa o LLM chamando `z-ai chat` com um prompt curto."""
-    t0 = time.time()
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
-            out_path = f.name
-        r = subprocess.run(
-            ["z-ai", "chat", "--prompt", "Responda apenas: OK",
-             "--output", out_path],
-            capture_output=True, text=True, timeout=30,
-        )
-        lat = int((time.time() - t0) * 1000)
-        if r.returncode != 0:
-            return {"ok": False, "erro": r.stderr[:300] or "falha desconhecida",
-                    "latencia_ms": lat, "modelo": req.model or "z-ai"}
-        data = json.loads(Path(out_path).read_text(encoding="utf-8"))
-        resposta = (data.get("content") or
-                    (data.get("choices", [{}])[0].get("message", {}).get("content", "")))
-        Path(out_path).unlink(missing_ok=True)
-        return {"ok": True, "latencia_ms": lat, "modelo": req.model or "z-ai",
-                "resposta": resposta[:200]}
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "erro": "timeout (30s)", "latencia_ms": 30000,
-                "modelo": req.model or "z-ai"}
-    except Exception as e:
-        return {"ok": False, "erro": str(e), "latencia_ms": int((time.time() - t0) * 1000),
-                "modelo": req.model or "z-ai"}
 
 
 # ==================== Configuração LBM ====================

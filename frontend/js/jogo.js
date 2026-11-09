@@ -22,6 +22,7 @@ const SERVICOS_MCP = [
 function estiloDecisor(origem) {
   if (origem === "llm") return { cls: "llm", icon: "🧠", label: "LLM" };
   if (origem === "bot") return { cls: "bot", icon: "🤖", label: "BOT" };
+  if (origem === "regra") return { cls: "regra", icon: "📏", label: "REGRA" };
   return { cls: "lbm", icon: "⚡", label: "LBM" };
 }
 
@@ -85,7 +86,9 @@ document.getElementById("btn-iniciar").addEventListener("click", async () => {
 
 document.getElementById("btn-turno").addEventListener("click", async () => {
   const btn = document.getElementById("btn-turno");
+  const btnAuto = document.getElementById("btn-auto");
   btn.disabled = true;
+  btnAuto.disabled = true;  // não liga o automático no meio de um turno manual
   btn.textContent = "⏳ Executando...";
   try {
     const r = await API.turno(partidaId);
@@ -104,7 +107,8 @@ document.getElementById("btn-turno").addEventListener("click", async () => {
       alert(e.message);
     }
   } finally {
-    btn.disabled = false;
+    btn.disabled = autoTimer !== null || btn.dataset.statusOk !== "1";
+    btnAuto.disabled = btn.dataset.statusOk !== "1";
     btn.textContent = "▶ Próximo turno";
   }
 });
@@ -117,10 +121,14 @@ document.getElementById("btn-reset-lock").addEventListener("click", async () => 
   } catch (e) { alert("Erro: " + e.message); }
 });
 
+let autoOcupado = false;  // evita disparar um turno antes do anterior terminar
+
 document.getElementById("btn-auto").addEventListener("click", () => {
   if (autoTimer) return;
   trocarAuto(true);
   autoTimer = setInterval(async () => {
+    if (autoOcupado) return;
+    autoOcupado = true;
     try {
       const r = await API.turno(partidaId);
       await carregarEstado();
@@ -132,6 +140,8 @@ document.getElementById("btn-auto").addEventListener("click", () => {
     } catch (e) {
       log("✗ Erro: " + e.message);
       clearInterval(autoTimer); autoTimer = null; trocarAuto(false);
+    } finally {
+      autoOcupado = false;
     }
   }, 2000);
 });
@@ -179,6 +189,10 @@ document.getElementById("m-skills-padrao").addEventListener("click", restaurarSk
 function trocarAuto(rodando) {
   document.getElementById("btn-auto").hidden = rodando;
   document.getElementById("btn-parar-auto").hidden = !rodando;
+  // Com o automático ligado, o turno manual fica bloqueado.
+  const btnTurno = document.getElementById("btn-turno");
+  btnTurno.disabled = rodando || btnTurno.dataset.statusOk !== "1";
+  btnTurno.title = rodando ? "Pare o automático para avançar manualmente" : "";
 }
 
 // ====================================================================
@@ -231,85 +245,85 @@ function desenharMcpHub(servicosAtivos) {
 }
 
 // ====================================================================
-// DECISION FLOW — atualiza o pipeline Laya → LLM com confidence
+// DECISÕES POR AGENTE — um cartão por agente no último turno
 // ====================================================================
-function atualizarFlow(decisoes, decisorTipo) {
-  const confFill = document.getElementById("flow-conf-fill");
-  const confValue = document.getElementById("flow-conf-value");
-  const thresholdMarker = document.getElementById("flow-threshold-marker");
-  const thresholdLabel = document.getElementById("flow-threshold");
-  const pathLbm = document.getElementById("flow-path-lbm");
-  const pathLlm = document.getElementById("flow-path-llm");
-  const flowConf = document.getElementById("flow-confidence");
+function escHtml(t) {
+  return String(t ?? "").replace(/[&<>"']/g, c => (
+    {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+}
+
+function atualizarFlow(decisoes) {
+  const resumoDiv = document.getElementById("flow-resumo");
   const decisionsDiv = document.getElementById("flow-decisions");
+  const turnoLabel = document.getElementById("flow-turno");
+  const THRESHOLD = 0.50;  // padrão do hibrido.py (marca na barra)
 
-  // Threshold padrão (calibrado no hibrido.py)
-  const threshold = 0.50;
-  thresholdLabel.textContent = threshold.toFixed(2);
-  thresholdMarker.style.left = `${threshold * 100}%`;
-
-  // Se não há decisões, reseta
   if (!decisoes || decisoes.length === 0) {
-    confFill.style.width = "0%";
-    confValue.textContent = "—";
-    pathLbm.classList.remove("active");
-    pathLlm.classList.remove("active");
-    flowConf.classList.remove("active");
+    resumoDiv.innerHTML = "";
+    turnoLabel.textContent = "(último turno)";
     decisionsDiv.innerHTML = '<p class="text-xs text-muted">Aguardando decisão…</p>';
     return;
   }
 
-  // Pega só as oficiais do último turno
   const ultimoTurno = Math.max(...decisoes.map(d => d.turno));
-  const doTurno = decisoes.filter(d => d.turno === ultimoTurno && d.oficial);
+  const doTurno = decisoes.filter(d => d.turno === ultimoTurno && d.oficial)
+                          .sort((a, b) => a.indice - b.indice);
+  turnoLabel.textContent = `(turno ${ultimoTurno})`;
+  const nomeDe = i => (agentesCache.find(a => a.indice === i) || {}).nome || `Agente ${i}`;
 
-  // Para cada decisão, extrai decidido_por e confidence da resposta_bruta
-  let totalConf = 0, countConf = 0;
-  let lbmCount = 0, llmCount = 0;
-  const chips = doTurno.map(d => {
-    let decididoPor = "lbm";
-    let confidence = null;
-    if (d.resposta_bruta) {
-      try {
-        const rb = JSON.parse(d.resposta_bruta);
-        decididoPor = rb.decidido_por || (rb.lbm_sugestao ? "llm" : "lbm");
-        confidence = rb.confidence ?? rb.lbm_sugestao?.confidence ?? null;
-      } catch {}
-    }
-    // Fallback: detecta pelo modelo
-    if (d.modelo && d.modelo.includes("escalonado")) decididoPor = "llm";
-
-    if (decididoPor === "llm") llmCount++; else lbmCount++;
-    if (confidence !== null && confidence !== undefined) {
-      totalConf += confidence;
-      countConf++;
-    }
+  const contagem = {regra: 0, lbm: 0, llm: 0, bot: 0};
+  const cartoes = doTurno.map(d => {
+    let rb = {};
+    try { rb = JSON.parse(d.resposta_bruta || "{}"); } catch {}
+    let origem = rb.decidido_por || d.origem || "lbm";
+    const escalonado = (d.modelo || "").includes("escalonado");
+    if (escalonado) origem = "llm";
+    contagem[origem] = (contagem[origem] || 0) + 1;
 
     let acao = "?", alvo = null;
     try { const a = JSON.parse(d.acao_json); acao = a.acao; alvo = a.alvo; } catch {}
 
-    const estilo = estiloDecisor(decididoPor);
-    return `<span class="decision-chip ${estilo.cls}" title="${d.modelo || decididoPor}">
-      ${estilo.icon} A${d.indice}
-      <span class="chip-action">${acao}${alvo != null ? `→${alvo}` : ''}</span>
-    </span>`;
+    const conf = rb.confidence ?? rb.lbm_sugestao?.confidence ?? null;
+    const estilo = estiloDecisor(origem);
+    // A barra de confiança só faz sentido para a Laya (decisão ou sugestão escalada).
+    const mostraBarra = conf !== null && (origem === "lbm" || escalonado);
+    const barra = mostraBarra ? `
+      <div class="confidence-bar-container">
+        <div class="confidence-bar" title="limiar ${THRESHOLD.toFixed(2)}">
+          <div class="confidence-bar-fill" style="width:${Math.round(conf * 100)}%"></div>
+          <div class="confidence-threshold" style="left:${THRESHOLD * 100}%"></div>
+        </div>
+        <span class="confidence-value">${Number(conf).toFixed(2)}</span>
+      </div>` : "";
+
+    const raciocinio = String(rb.raciocinio || d._raciocinio || "")
+      .replace(/^\[regra\]\s*/, "");
+    const notaEscala = escalonado
+      ? `<div class="cartao-nota aviso">⚠ Laya não resolveu — escalou para o LLM</div>` : "";
+    const fallback = d.fallback
+      ? `<div class="cartao-nota aviso">⚠ fallback (decisor indisponível)</div>` : "";
+    const alvoTxt = alvo != null ? ` → ${escHtml(nomeDe(alvo))}` : "";
+    const lat = d.latencia_ms ? `${d.latencia_ms} ms` : (origem === "regra" ? "instantâneo" : "");
+
+    return `<div class="agente-cartao ${estilo.cls}">
+      <div class="cartao-topo">
+        <span class="cartao-nome">A${d.indice} ${escHtml(nomeDe(d.indice))}</span>
+        <span class="decision-chip ${estilo.cls}" style="margin:0">${estilo.icon} ${estilo.label}</span>
+      </div>
+      <div class="cartao-acao">${escHtml(acao)}${alvoTxt}</div>
+      ${barra}
+      ${notaEscala}${fallback}
+      ${raciocinio ? `<div class="cartao-raciocinio" title="${escHtml(raciocinio)}">${escHtml(raciocinio)}</div>` : ""}
+      ${lat ? `<div class="cartao-meta">${lat}${d.modelo && !["lbm","regra","bot","llm","escalonado"].includes(d.modelo) ? ` • ${escHtml(d.modelo)}` : ""}</div>` : ""}
+    </div>`;
   }).join("");
 
-  // Confidence média (ou 0 se não houver)
-  const avgConf = countConf > 0 ? totalConf / countConf : 0;
-  confFill.style.width = `${avgConf * 100}%`;
-  confValue.textContent = countConf > 0 ? avgConf.toFixed(2) : "—";
-
-  // Destaca o path ativo
-  pathLbm.classList.toggle("active", lbmCount > llmCount);
-  pathLlm.classList.toggle("active", llmCount > 0);
-  flowConf.classList.toggle("active", countConf > 0);
-
-  // Lista de chips
-  const summary = `<div class="text-xs text-muted" style="margin-bottom:6px">
-    Turno ${ultimoTurno} • <span style="color:var(--lbm)">${lbmCount} Laya</span> • <span style="color:var(--llm)">${llmCount} LLM</span>
-  </div>`;
-  decisionsDiv.innerHTML = summary + (chips || '<p class="text-xs text-muted">—</p>');
+  const pilulas = [["regra", "📏 regras"], ["lbm", "⚡ Laya"], ["llm", "🧠 LLM"], ["bot", "🤖 bot"]]
+    .filter(([k]) => contagem[k] > 0)
+    .map(([k, rot]) => `<span class="decision-chip ${k}" style="margin:0">${contagem[k]} ${rot}</span>`)
+    .join("");
+  resumoDiv.innerHTML = pilulas;
+  decisionsDiv.innerHTML = cartoes || '<p class="text-xs text-muted">—</p>';
 }
 
 // === Carregar estado ===
@@ -333,12 +347,14 @@ async function carregarEstado() {
     if (p.decisor === "llm") {
       s += ` <span>LBM: <strong>${p.lbm_habilitado ? "ligado" : "desligado"}</strong></span>`;
     }
-    s += ` <span>Conselho: <strong>${p.rodadas_conselho}</strong> rodadas</span>`;
+    s += ` <span>Conselho: <strong>${p.rodadas_conselho}</strong> passada(s) de discussão</span>`;
     status.innerHTML = s;
 
     // Botões
     document.getElementById("btn-iniciar").disabled = p.status !== "CRIADA";
-    document.getElementById("btn-turno").disabled = p.status !== "EM_ANDAMENTO";
+    const btnTurno = document.getElementById("btn-turno");
+    btnTurno.dataset.statusOk = p.status === "EM_ANDAMENTO" ? "1" : "0";
+    btnTurno.disabled = p.status !== "EM_ANDAMENTO" || autoTimer !== null;
     document.getElementById("btn-auto").disabled = p.status !== "EM_ANDAMENTO";
     document.getElementById("btn-encerrar").disabled = p.status === "ENCERRADA";
     document.getElementById("btn-retomar").hidden = p.status !== "PAUSADA";
@@ -491,7 +507,7 @@ async function carregarDetalhesTurno() {
     }
 
     // === Atualiza o fluxo de decisão Laya → LLM ===
-    atualizarFlow(decisoes.decisoes, "lbm");
+    atualizarFlow(decisoes.decisoes);
 
     // === Histórico de turnos (rico: eventos + ações + deltas + mortes) ===
     const hist = document.getElementById("d-historico");
@@ -630,7 +646,7 @@ async function carregarDetalhesTurno() {
         return `<div style="margin-bottom:8px"><strong>Turno ${t}:</strong>${msgs}</div>`;
       }).join("");
     } else {
-      cons.innerHTML = '<p class="text-muted text-sm">Sem mensagens. O conselho acontece quando rodadas_conselho ≥ 1 e o decisor não é "bot".</p>';
+      cons.innerHTML = '<p class="text-muted text-sm">Sem mensagens. O conselho (propostas e discussão) acontece com o decisor LLM, para os agentes que a Laya não resolveu.</p>';
     }
 
     // === Decisões detalhadas ===

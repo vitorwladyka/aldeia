@@ -8,8 +8,8 @@
 #
 # Checagens:
 #   1. Nenhum arquivo .env (ou .env.*) pode ser adicionado ao commit.
-#   2. Nenhum conteúdo staged pode conter uma chave em texto (gsk_..., sk-...,
-#      AKIA..., etc.).
+#   2. Nenhum conteúdo staged pode conter uma chave em texto (gsk_..., sk-ant-...,
+#      sk-..., AKIA..., etc.).
 #
 # Para pular em caso de falso positivo: git commit --no-verify
 
@@ -27,7 +27,7 @@ fi
 
 # 2. Procurar chaves em texto no conteúdo staged.
 #    Padrões: Groq (gsk_), OpenAI (sk-), AWS (AKIA), Google (AIza), tokens longos.
-padrao='(gsk_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_\-]{30,})'
+padrao='(gsk_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_\-]{20,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_\-]{30,})'
 # Só os arquivos de texto staged (adicionados/modificados), ignorando binários.
 encontrados=$(git diff --cached --no-color -U0 --diff-filter=ACM | grep -E '^\+' | grep -En "$padrao" || true)
 if [ -n "$encontrados" ]; then
