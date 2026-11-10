@@ -29,7 +29,6 @@ from core.mcp_cliente import MundoMemoria
 from core.preset import Preset
 from decisores import bot as _bot
 from decisores import laya_router as _lbm
-from decisores import regras as _regras
 from hibrido import decidir as _hibrido
 from hibrido import local_da_acao as _hibrido_local
 from hibrido import _carregar_threshold as _hibrido_threshold
@@ -319,8 +318,7 @@ def _carta_cabe(carta: dict, viaveis: list[dict]) -> bool:
 
 def _conselho_discussao(p: dict, estado, preset, mensagens: list, prox_turno: int,
                         participantes: list[int], travadas: dict,
-                        reservas_travadas: dict, passadas: int,
-                        origens: dict | None = None):
+                        reservas_travadas: dict, passadas: int):
     """Conselho com discussão real entre agentes LLM.
 
     1. PROPOSTA (às cegas): cada participante coloca uma carta (ação) na mesa
@@ -343,8 +341,7 @@ def _conselho_discussao(p: dict, estado, preset, mensagens: list, prox_turno: in
 
     # Cartas travadas (decididas pela Laya na fase 0): visíveis, mas não falam.
     travadas_cartas = {
-        i: {"acao": ad.acao, "alvo": ad.alvo, "travada": True,
-            "origem": (origens or {}).get(i, "lbm")}
+        i: {"acao": ad.acao, "alvo": ad.alvo, "travada": True}
         for i, ad in travadas.items()
     }
     cartas: dict[int, dict] = {i: dict(c) for i, c in travadas_cartas.items()}
@@ -358,7 +355,7 @@ def _conselho_discussao(p: dict, estado, preset, mensagens: list, prox_turno: in
     def _mesa(idx, fase, base, passada=0, motivo=None):
         lista = [
             {"agente": i, "nome": nomes[i], "acao": c["acao"], "alvo": c["alvo"],
-             "travada": c["travada"], "origem": c.get("origem"), "eu": i == idx}
+             "travada": c["travada"], "eu": i == idx}
             for i, c in sorted(base.items(), key=lambda kv: ordem.get(kv[0], 99))
         ]
         return {"fase": fase, "passada": passada, "cartas": lista,
@@ -491,34 +488,12 @@ def _rodar_conselho(p: dict, estado, preset, mensagens: list,
 
     usa_lbm = (p["decisor"] == "llm" and p.get("lbm_habilitado", True))
 
-    # ---- FASE R: regras determinísticas (antes da Laya e do LLM) ----
-    # Só no decisor "llm". Quem a regra resolve fica com decisão final, ocupa o
-    # local e reserva insumos/alimento/cura; os demais seguem para a Laya/LLM.
-    if p["decisor"] == "llm":
-        for idx in estado.ordem_turno:
-            if not estado.agente(idx).vivo:
-                continue
-            viaveis_r = acoes_viaveis(estado, idx, preset, reservas_resolvidas)
-            d_r = _regras.decidir(estado, idx, viaveis_r, preset,
-                                  reservas_resolvidas, locais_resolvidos)
-            if d_r is None:
-                continue
-            acoes_finais[idx] = motor.AcaoDecidida(
-                agente=idx, acao=d_r.acao, alvo=d_r.alvo)
-            decisoes_finais[idx] = _decisao_para_historico(d_r, 0, prox_turno, idx)
-            loc_r = _hibrido_local(d_r.acao, preset)
-            locais_resolvidos[loc_r] = locais_resolvidos.get(loc_r, 0) + 1
-            reservar_acao(reservas_resolvidas, d_r.acao, d_r.alvo, preset)
-            print(f"[REGRA] agente={idx} → {d_r.acao}"
-                  + (f" alvo={d_r.alvo}" if d_r.alvo is not None else "")
-                  + f" | {d_r.raciocinio}", flush=True)
-
     # ---- FASE 0: pré-resolução pela LBM ----
     if usa_lbm:
         sat = preset.saturacao_limite
         for idx in estado.ordem_turno:
             a = estado.agente(idx)
-            if not a.vivo or idx in acoes_finais:
+            if not a.vivo:
                 continue
             viaveis = acoes_viaveis(estado, a.indice, preset, reservas_resolvidas)
             if not viaveis:
@@ -570,16 +545,14 @@ def _rodar_conselho(p: dict, estado, preset, mensagens: list,
     if usa_lbm:
         participantes = a_escalar
     else:
-        participantes = [i for i in estado.ordem_turno
-                         if estado.agente(i).vivo and i not in acoes_finais]
+        participantes = [i for i in estado.ordem_turno if estado.agente(i).vivo]
 
     # Decisor LLM: conselho com discussão real (cartas → conversa → ajuste).
     if p["decisor"] == "llm":
         passadas = max(0, int(p.get("rodadas_conselho", 1) or 0))
         acoes_c, decs_c = _conselho_discussao(
             p, estado, preset, mensagens, prox_turno, participantes,
-            dict(acoes_finais), reservas_resolvidas, passadas,
-            origens={i: d["origem"] for i, d in decisoes_finais.items()})
+            dict(acoes_finais), reservas_resolvidas, passadas)
         for ad in acoes_c:
             acoes_finais[ad.agente] = ad
         for dh in decs_c:

@@ -222,6 +222,46 @@ def catalogo_skills_padrao():
 # ==================== Análise ====================
 
 
+def _decisoes_com_divergencia(p: dict) -> list[dict]:
+    """Decisões de todos os turnos + intenção declarada no conselho e resultado.
+
+    - `intencao`: carta da PROPOSTA do agente no conselho (1ª mensagem dele no
+      turno). None quando ele não passou pelo conselho (Laya/bot).
+    - `acao`: ação final decidida; `diverge`: intenção != ação final.
+    - `resultado`: "ok" | "falhou" (MCP sem sucesso) | "invalidada" | None.
+    """
+    intencoes: dict[tuple[int, int], str] = {}
+    for m in sorted(p.get("mensagens", []), key=lambda m: m.get("rodada", 0)):
+        chave = (m.get("turno"), m.get("agente"))
+        if m.get("agente") is not None and m.get("intencao_declarada"):
+            intencoes.setdefault(chave, m["intencao_declarada"])
+    saida = []
+    for t in p["historico"]:
+        execs = {a["agente_id"]: a for a in t.get("acoes_executadas", [])}
+        for d in t.get("decisoes", []):
+            dd = dict(d)
+            dd["turno"] = t["turno"]
+            try:
+                acao = json.loads(d.get("acao_json") or "{}").get("acao")
+            except ValueError:
+                acao = None
+            intencao = intencoes.get((t["turno"], d["indice"]))
+            ex = execs.get(d["indice"])
+            if ex is None:
+                resultado = None
+            elif ex.get("invalidada_na_execucao"):
+                resultado = "invalidada"
+            elif ex.get("sucesso") is False:
+                resultado = "falhou"
+            else:
+                resultado = "ok"
+            dd.update(acao=acao, intencao=intencao,
+                      diverge=intencao is not None and intencao != acao,
+                      resultado=resultado)
+            saida.append(dd)
+    return saida
+
+
 @app.get("/partidas/{pid}/analise/{tipo}")
 def analise(pid: int, tipo: str):
     """Retorna JSON com dados estruturados para a página de Análise.
@@ -229,6 +269,11 @@ def analise(pid: int, tipo: str):
     Lê do `historico` persistido (uma entrada por turno, com decisoes,
     movimentos, eventos_vida, etc.).
     """
+    # Esta rota captura também "decisoes.csv" (o {tipo} aceita o ponto), então
+    # a exportação é desviada aqui para a rota de CSV.
+    if tipo.endswith(".csv"):
+        return analise_csv(pid, tipo[:-4])
+
     p = armazenamento.carregar(pid)
     if p is None:
         raise HTTPException(404, f"partida {pid} não encontrada")
@@ -285,15 +330,7 @@ def analise(pid: int, tipo: str):
         return {"mensagens": p.get("mensagens", [])}
 
     if tipo == "decisoes":
-        # Achata todas as decisões de todos os turnos do histórico
-        decisoes = []
-        for t in p["historico"]:
-            for d in t.get("decisoes", []):
-                # Garante que turno está no dicionário
-                dd = dict(d)
-                dd["turno"] = t["turno"]
-                decisoes.append(dd)
-        return {"decisoes": decisoes}
+        return {"decisoes": _decisoes_com_divergencia(p)}
 
     raise HTTPException(404, f"tipo de análise desconhecido: {tipo}")
 
@@ -301,8 +338,7 @@ def analise(pid: int, tipo: str):
 @app.get("/partidas/{pid}/analise/{tipo}.csv")
 def analise_csv(pid: int, tipo: str):
     """Exporta CSV simples do tipo solicitado."""
-    dados = analise(pid, tipo).body  # já é JSON
-    d = json.loads(dados)
+    d = analise(pid, tipo)  # dict com os mesmos dados da versão JSON
     linhas = []
     if tipo == "estoque":
         linhas.append("turno,item,quantidade")
@@ -314,6 +350,12 @@ def analise_csv(pid: int, tipo: str):
         for t in d["turnos"]:
             for m in t["movimentos"]:
                 linhas.append(f"{t['turno']},{m['tipo']},{m['item']},{m['delta']}")
+    elif tipo == "decisoes":
+        linhas.append("turno,agente,origem,intencao,acao,diverge,resultado,latencia_ms")
+        for x in d["decisoes"]:
+            linhas.append(f"{x['turno']},{x['indice']},{x['origem']},{x['intencao'] or ''},"
+                          f"{x['acao'] or ''},{str(x['diverge']).lower()},"
+                          f"{x['resultado'] or ''},{x.get('latencia_ms') or 0}")
     else:
         linhas.append(f"# {tipo}")
         linhas.append(json.dumps(d, ensure_ascii=False))

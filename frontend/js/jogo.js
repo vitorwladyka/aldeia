@@ -22,7 +22,6 @@ const SERVICOS_MCP = [
 function estiloDecisor(origem) {
   if (origem === "llm") return { cls: "llm", icon: "🧠", label: "LLM" };
   if (origem === "bot") return { cls: "bot", icon: "🤖", label: "BOT" };
-  if (origem === "regra") return { cls: "regra", icon: "📏", label: "REGRA" };
   return { cls: "lbm", icon: "⚡", label: "LBM" };
 }
 
@@ -271,7 +270,7 @@ function atualizarFlow(decisoes) {
   turnoLabel.textContent = `(turno ${ultimoTurno})`;
   const nomeDe = i => (agentesCache.find(a => a.indice === i) || {}).nome || `Agente ${i}`;
 
-  const contagem = {regra: 0, lbm: 0, llm: 0, bot: 0};
+  const contagem = {lbm: 0, llm: 0, bot: 0};
   const cartoes = doTurno.map(d => {
     let rb = {};
     try { rb = JSON.parse(d.resposta_bruta || "{}"); } catch {}
@@ -296,14 +295,13 @@ function atualizarFlow(decisoes) {
         <span class="confidence-value">${Number(conf).toFixed(2)}</span>
       </div>` : "";
 
-    const raciocinio = String(rb.raciocinio || d._raciocinio || "")
-      .replace(/^\[regra\]\s*/, "");
+    const raciocinio = String(rb.raciocinio || d._raciocinio || "");
     const notaEscala = escalonado
       ? `<div class="cartao-nota aviso">⚠ Laya não resolveu — escalou para o LLM</div>` : "";
     const fallback = d.fallback
       ? `<div class="cartao-nota aviso">⚠ fallback (decisor indisponível)</div>` : "";
     const alvoTxt = alvo != null ? ` → ${escHtml(nomeDe(alvo))}` : "";
-    const lat = d.latencia_ms ? `${d.latencia_ms} ms` : (origem === "regra" ? "instantâneo" : "");
+    const lat = d.latencia_ms ? `${d.latencia_ms} ms` : "";
 
     return `<div class="agente-cartao ${estilo.cls}">
       <div class="cartao-topo">
@@ -314,11 +312,11 @@ function atualizarFlow(decisoes) {
       ${barra}
       ${notaEscala}${fallback}
       ${raciocinio ? `<div class="cartao-raciocinio" title="${escHtml(raciocinio)}">${escHtml(raciocinio)}</div>` : ""}
-      ${lat ? `<div class="cartao-meta">${lat}${d.modelo && !["lbm","regra","bot","llm","escalonado"].includes(d.modelo) ? ` • ${escHtml(d.modelo)}` : ""}</div>` : ""}
+      ${lat ? `<div class="cartao-meta">${lat}${d.modelo && !["lbm","bot","llm","escalonado"].includes(d.modelo) ? ` • ${escHtml(d.modelo)}` : ""}</div>` : ""}
     </div>`;
   }).join("");
 
-  const pilulas = [["regra", "📏 regras"], ["lbm", "⚡ Laya"], ["llm", "🧠 LLM"], ["bot", "🤖 bot"]]
+  const pilulas = [["lbm", "⚡ Laya"], ["llm", "🧠 LLM"], ["bot", "🤖 bot"]]
     .filter(([k]) => contagem[k] > 0)
     .map(([k, rot]) => `<span class="decision-chip ${k}" style="margin:0">${contagem[k]} ${rot}</span>`)
     .join("");

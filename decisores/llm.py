@@ -113,8 +113,7 @@ def renderizar_mesa(mesa: dict) -> str:
         for c in mesa["cartas"]:
             alvo = f" → alvo {c['alvo']}" if c.get("alvo") is not None else ""
             marca = " (você)" if c.get("eu") else ""
-            quem = "regra determinística" if c.get("origem") == "regra" else "Laya"
-            trava = f" [travada: decisão da {quem}, não muda]" if c.get("travada") else ""
+            trava = " [travada: decisão da Laya, não muda]" if c.get("travada") else ""
             linhas.append(f"- {c['nome']}{marca}: {c['acao']}{alvo}{trava}")
 
     if mesa.get("conflitos"):

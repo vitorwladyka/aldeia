@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Jogo — Aldeia de Agentes</title>
-  <link rel="stylesheet" href="css/estilo.css?v=20">
+  <link rel="stylesheet" href="css/estilo.css?v=22">
 </head>
 <body>
   <header>
@@ -82,7 +82,7 @@
         <div class="flow-section">
           <h3>🧭 Decisões por agente <span class="hint" id="flow-turno">(último turno)</span></h3>
           <div class="text-xs text-muted" style="margin-bottom:10px">
-            Cada agente passa por: 📏 regras → ⚡ Laya (se confiante) → 🧠 LLM (conselho).
+            Cada agente passa pela ⚡ Laya; se a confiança for baixa ou o local lotar, escala para o 🧠 LLM (conselho).
           </div>
           <div id="flow-resumo" class="flow-resumo"></div>
           <div id="flow-decisions" class="agente-cards"><p class="text-xs text-muted">Aguardando decisão…</p></div>
@@ -169,6 +169,6 @@
   </div>
 
   <script src="js/api.js?v=20"></script>
-  <script src="js/jogo.js?v=21"></script>
+  <script src="js/jogo.js?v=22"></script>
 </body>
 </html>

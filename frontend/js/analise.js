@@ -106,11 +106,20 @@ async function carregarDecisoes(pid) {
   const r = await API.analise(pid, "decisoes");
   const div = document.getElementById("decisoes");
   if (!r.decisoes.length) { div.innerHTML = "<p>Sem decisões.</p>"; return; }
-  let html = "<table><tr><th>Turno</th><th>Agente</th><th>Origem</th><th>Ação</th><th>Válida</th><th>Fallback</th><th>Latência (ms)</th></tr>";
+  const nDiv = r.decisoes.filter(d => d.diverge).length;
+  const nConselho = r.decisoes.filter(d => d.intencao).length;
+  const rotuloResultado = {ok: "✓ ok", falhou: "✗ falhou (MCP)", invalidada: "⚠ invalidada"};
+  let html = `<p class="text-xs text-muted">Intenção = carta proposta no conselho. `
+    + `${nDiv} de ${nConselho} decisões do conselho mudaram de carta; `
+    + `Laya/bot não passam pelo conselho (sem intenção).</p>`;
+  html += "<table><tr><th>Turno</th><th>Agente</th><th>Origem</th><th>Intenção</th><th>Ação final</th><th>Divergiu</th><th>Resultado</th><th>Fallback</th><th>Latência (ms)</th></tr>";
   for (const d of r.decisoes) {
-    let acao = "-";
-    try { acao = JSON.parse(d.acao_json).acao; } catch {}
-    html += `<tr><td>${d.turno}</td><td>${d.indice}</td><td>${d.origem}</td><td>${acao}</td><td>${!!d.valida}</td><td>${!!d.fallback}</td><td>${d.latencia_ms ?? "-"}</td></tr>`;
+    const estiloLinha = d.diverge ? ' style="background:var(--warning-subtle, rgba(234,179,8,.12))"' : "";
+    html += `<tr${estiloLinha}><td>${d.turno}</td><td>${d.indice}</td><td>${d.origem}</td>`
+      + `<td>${d.intencao ?? "—"}</td><td>${d.acao ?? "-"}</td>`
+      + `<td>${d.intencao ? (d.diverge ? "sim" : "não") : "—"}</td>`
+      + `<td>${rotuloResultado[d.resultado] ?? "—"}</td>`
+      + `<td>${!!d.fallback}</td><td>${d.latencia_ms ?? "-"}</td></tr>`;
   }
   html += "</table>";
   div.innerHTML = html;

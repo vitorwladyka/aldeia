@@ -22,11 +22,6 @@ from decisores.bot import Decisao
 
 
 # ---------------------------------------------------------------- helpers
-@pytest.fixture(autouse=True)
-def _sem_regras(monkeypatch):
-    """Estes testes isolam a mecânica do conselho: desliga a fase de regras."""
-    from decisores import regras
-    monkeypatch.setattr(regras, "decidir", lambda *a, **k: None)
 
 def _estado(estoque_extra=None, vidas=(3, 3, 3), alimento=30, estacao="normal"):
     estoque = {i: 0 for i in TODOS_ITENS}
